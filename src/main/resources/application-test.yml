@@ -1,0 +1,11 @@
+# Utilisé par les tests d'intégration avec Testcontainers (PostgreSQL réel).
+# Le datasource réel est injecté dynamiquement par @DynamicPropertySource dans les classes de test.
+spring:
+  jpa:
+    show-sql: true
+  flyway:
+    enabled: true
+
+nks:
+  payment:
+    provider: fake

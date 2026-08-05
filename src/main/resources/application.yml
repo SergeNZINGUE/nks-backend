@@ -1,0 +1,120 @@
+spring:
+  application:
+    name: nks-backend
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate   # Le schéma est géré exclusivement par Flyway
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  servlet:
+    multipart:
+      max-file-size: 10MB     # Les médias volumineux passent par URL pré-signée CDN, pas par le backend
+      max-request-size: 10MB
+
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+server:
+  port: ${SERVER_PORT:8082}
+  servlet:
+    context-path: /api/v1
+
+springdoc:
+  swagger-ui:
+    path: /docs
+  api-docs:
+    path: /api-docs
+
+nks:
+  jwt:
+    private-key-path: ${JWT_PRIVATE_KEY_PATH:classpath:keys/private_key.pem}
+    public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:keys/public_key.pem}
+    access-token-expiration-minutes: 60
+    refresh-token-expiration-days: 7
+
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+
+  media:
+    provider: cloudinary # cloudinary | s3
+    max-photo-size-bytes: 5242880      # 5 Mo (RM-03)
+    max-video-size-bytes: 104857600    # 100 Mo (décision validée par le client — remplace la contradiction 100/500 Mo du CdC)
+    video-min-duration-seconds: 45
+    video-max-duration-seconds: 60
+    presigned-url-expiration-seconds: 3600
+    cloudinary:
+      cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+      api-key: ${CLOUDINARY_API_KEY:}
+      api-secret: ${CLOUDINARY_API_SECRET:}
+
+  payment:
+    provider: ligdicash # ligdicash | cinetpay | fedapay | fake
+    vote-price-fcfa: 100
+    prereservation-timeout-minutes: 15
+    ligdicash:
+      base-url: ${LIGDICASH_BASE_URL:https://app.ligdicash.com/pay/v01}
+      api-key: ${LIGDICASH_API_KEY:}
+      api-secret: ${LIGDICASH_API_SECRET:}
+      webhook-secret: ${LIGDICASH_WEBHOOK_SECRET:}
+      callback-base-url: ${LIGDICASH_CALLBACK_BASE_URL:http://localhost:8080/api/v1}
+
+  sms:
+    provider: africastalking # africastalking | twilio
+    africastalking:
+      username: ${AT_USERNAME:}
+      api-key: ${AT_API_KEY:}
+      sender-id: ${AT_SENDER_ID:}
+
+  votes:
+    # Anti-fraude — seuil configurable, valeur par défaut décidée avec le client (20 votes payants / heure / numéro)
+    max-votes-per-phone-per-hour: 20
+
+  social-votes:
+    # Décision client : intégration API réelle Facebook/TikTok (et non saisie manuelle).
+    # Nécessite la création d'applications développeur Meta et TikTok par le client
+    # (Meta App Review + TikTok for Developers), avec accès aux permissions de lecture
+    # des likes/commentaires sur les publications officielles NKS. Voir README §"Votes sociaux".
+    provider: facebook-tiktok-api
+    like-points: 0.25
+    comment-points: 0.75
+    facebook:
+      page-id: ${FACEBOOK_PAGE_ID:}
+      access-token: ${FACEBOOK_ACCESS_TOKEN:}
+      graph-api-version: v26.0
+      # false = comptabilise uniquement les "J'aime" classiques (edge /likes), conforme à RM-19.
+      # true = comptabilise TOUTE réaction (Love/Haha/Wow/Sad/Angry/Care) via reactions.summary(total_count).
+      compter-toutes-reactions: false
+    tiktok:
+      client-key: ${TIKTOK_CLIENT_KEY:}
+      client-secret: ${TIKTOK_CLIENT_SECRET:}
+      access-token: ${TIKTOK_ACCESS_TOKEN:}
+
+  billeterie:
+    remboursement-automatique: false  # Décision client : remboursement traité manuellement au cas par cas par l'admin
+
+logging:
+  level:
+    bf.laterrasse.nks: INFO
+    org.springframework.security: INFO

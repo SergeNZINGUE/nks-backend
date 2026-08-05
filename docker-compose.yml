@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nks-postgres
+    environment:
+      POSTGRES_DB: nks_dev
+      POSTGRES_USER: nks
+      POSTGRES_PASSWORD: nks
+    ports:
+      - "5432:5432"
+    volumes:
+      - nks_pgdata:/var/lib/postgresql/data
+
+volumes:
+  nks_pgdata:

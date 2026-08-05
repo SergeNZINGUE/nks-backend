@@ -1,0 +1,12 @@
+target/
+*.class
+.idea/
+*.iml
+.vscode/
+.env
+dev.env
+*.log
+.DS_Store
+HELP.md
+.claude/
+keys/
