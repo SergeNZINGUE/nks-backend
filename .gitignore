@@ -4,7 +4,7 @@ target/
 *.iml
 .vscode/
 .env
-dev.env
+.env
 *.log
 .DS_Store
 HELP.md

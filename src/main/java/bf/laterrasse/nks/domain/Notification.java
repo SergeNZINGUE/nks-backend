@@ -67,6 +67,6 @@ public class Notification {
     @Column(name = "date_envoi")
     private Instant dateEnvoi;
 
-    @Column(name = "reference_externe", length = 150)
+    @Column(name = "reference_externe", columnDefinition = "text")
     private String referenceExterne;
 }

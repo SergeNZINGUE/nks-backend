@@ -112,6 +112,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Dotenv — charge .env au démarrage (dev local) -->
+        <dependency>
+            <groupId>me.paulschwarz</groupId>
+            <artifactId>spring-dotenv</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+
         <!-- Dev tools -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
