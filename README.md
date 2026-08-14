@@ -60,27 +60,48 @@ casse rien : `FacebookGraphSocialVoteProvider`/`TikTokSocialVoteProvider` renvoi
 Ceci concerne uniquement Facebook (le TikTok n'a pas été demandé/traité dans cette phase).
 À faire une seule fois avec le compte Facebook administrateur de la Page NKS.
 
-**Étape 1 — Créer l'app Meta**
+**⚠️ Terminologie Meta (mise à jour 2025-2026) :** il n'y a plus de "produit Pages API" à ajouter
+dans une liste de produits — Meta fonctionne maintenant par **use cases**. Le use case à utiliser
+s'appelle **"Manage everything on your Page"**.
+
+**Étape 1 — Créer l'app Meta avec le bon use case**
 1. Aller sur [developers.facebook.com/apps](https://developers.facebook.com/apps) → *Créer une app*.
-2. Choisir le cas d'usage **"Autre"** puis le type **"Entreprise"**, ou directement le use case
-   **Pages API** s'il est proposé — l'objectif est d'obtenir le produit **Pages API** activé
-   sur l'app.
+2. Lors de la création, choisir le use case **"Manage everything on your Page"** (c'est cette
+   étape qui active la Pages API — pas un ajout de produit après coup).
 3. Nommer l'app (ex. `NKS - Votes Sociaux`) et la rattacher à votre Business Manager si vous
    en avez un (sinon Meta en crée un automatiquement).
+4. Si l'app existe déjà sans ce use case : dans le **Dashboard** de l'app, chercher la section
+   listant les use cases ajoutés et l'option pour en ajouter un nouveau → sélectionner
+   **"Manage everything on your Page"**.
 
 **Étape 2 — Ajouter les permissions**
-1. Dans le tableau de bord de l'app → *Ajouter un produit* → **Pages API** → Configurer.
-2. Vérifier que votre compte Facebook personnel a bien un rôle **Admin/Développeur/Testeur**
+1. Dans le **Dashboard** de l'app, cliquer sur le use case **"Manage everything on your Page"**
+   pour le personnaliser (*Customize*).
+2. Par défaut, ce use case ajoute automatiquement `business_management`, `pages_show_list`,
+   `public_profile`. Ajouter manuellement (bouton **Add**) :
+   - **`pages_read_engagement`**
+   - **`pages_read_user_content`** — ⚠️ **indispensable en pratique**, malgré ce que dit la
+     doc Meta. Officiellement `pages_read_engagement` suffit pour lire un nombre de
+     likes/commentaires (pas le contenu). En réalité, Meta a un bug/comportement incohérent
+     largement rapporté par d'autres développeurs (forums Meta, non résolu à ce jour) où les
+     endpoints `likes.summary`/`reactions.summary`/`comments.summary` renvoient l'erreur
+     `(#10) This endpoint requires the 'pages_read_engagement' permission...` **même quand
+     cette permission est bien présente et vérifiée dans le token**. Ajouter aussi
+     `pages_read_user_content` a résolu le problème en pratique lors des tests NKS
+     (voir `FacebookGraphSocialVoteProviderTest`).
+3. Vérifier que votre compte Facebook personnel a bien un rôle **Admin/Développeur/Testeur**
    sur l'app (Réglages → Rôles de l'app) — c'est ce qui permet d'éviter l'App Review, tant que
    vous ne lisez que des Pages que ce compte gère lui-même.
-3. Les permissions nécessaires (`pages_show_list`, `pages_read_engagement`) sont accessibles
-   directement en **Standard Access** dans ce contexte.
+4. Ces permissions sont accessibles directement en **Standard Access** dans ce contexte.
 
 **Étape 3 — Obtenir un token courte durée via l'Explorateur Graph API**
 1. Aller sur [developers.facebook.com/tools/explorer](https://developers.facebook.com/tools/explorer).
 2. Sélectionner votre app NKS dans le menu déroulant en haut à droite.
-3. *Get Token* → *Get User Access Token* → cocher `pages_show_list` et `pages_read_engagement`
-   → Générer.
+3. *Get Token* → *Get User Access Token* → cocher `pages_show_list`, `pages_read_engagement`
+   **et `pages_read_user_content`** → Générer. Si une popup de consentement apparaît, vérifier
+   que la Page NKS est bien incluse ; si aucune popup n'apparaît (session déjà autorisée),
+   révoquer l'accès existant depuis [facebook.com/settings?tab=business_tools](https://www.facebook.com/settings?tab=business_tools)
+   puis regénérer, pour forcer un nouveau consentement complet avec les 3 permissions.
 4. Appeler `GET /me/accounts` : la réponse liste vos Pages, avec pour chacune un `id` (= Page ID)
    et un `access_token` (Page Access Token, mais **courte durée**, ~1h).
 
@@ -256,3 +277,70 @@ src/main/java/bf/laterrasse/nks/
 4. Ouvrir un compte sandbox LigdiCash et vérifier/adapter `LigdiCashGateway` contre la vraie
    API.
 5. Démarrer le frontend Angular (structure de modules déjà documentée au rapport §12.1).
+
+---
+
+## 8. Déploiement sur Jelastic Cloud
+
+Approche retenue : le **template natif "Spring Boot"** de Jelastic (pas de conteneur Docker à
+maintenir) + un nœud **PostgreSQL** dans le même environnement. C'est le chemin le plus simple
+et le plus proche de ce que Jelastic gère nativement (auto-tuning mémoire, logs, SSL intégré).
+
+### Étape 1 — Créer l'environnement
+1. Dashboard Jelastic → **New Environment**.
+2. Onglet **Java** → sélectionner le template **Spring Boot** dans la colonne "Application
+   Server Layer".
+3. Ajouter un nœud **PostgreSQL** (colonne "Database Layer", choisir la version 16 pour matcher
+   le `docker-compose.yml` local).
+4. Nommer l'environnement (ex. `nks-backend`), choisir les ressources (cloudlets — commencer
+   petit, la scalabilité verticale automatique est activée par défaut), **Create**.
+
+### Étape 2 — Build du jar
+```bash
+mvn clean package -DskipTests
+```
+Génère `target/nks-backend-0.1.0-SNAPSHOT.jar`.
+
+### Étape 3 — Variables d'environnement
+Dans le Dashboard → nœud Spring Boot → **Variables**, ajouter (valeurs issues de `.env`) :
+
+| Variable | Valeur |
+|---|---|
+| `SPRING_PROFILES_ACTIVE` | `prod` |
+| `SERVER_PORT` | `8080` ⚠️ **indispensable** — le jar écoute sur `8082` par défaut (`application.yml`), mais Jelastic route le trafic externe vers le port interne `8080`. Sans ce réglage, l'app tournera mais restera inaccessible depuis l'extérieur. |
+| `DB_URL` | `jdbc:postgresql://<hôte-interne-postgres>:5432/nks` — l'hôte interne est visible dans le Dashboard du nœud PostgreSQL (ex. `postgresql.<envName>`) |
+| `DB_USERNAME` / `DB_PASSWORD` | ceux définis à la création du nœud PostgreSQL |
+| `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` | voir Étape 4 |
+| `CORS_ALLOWED_ORIGINS` | domaine du futur frontend |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | valeurs validées lors des tests |
+| `LIGDICASH_*` | selon compte LigdiCash (sandbox ou prod) |
+| `AT_USERNAME` / `AT_API_KEY` / `AT_SENDER_ID` | valeurs validées lors des tests (utiliser le vrai username de prod si disponible, pas `sandbox`) |
+| `FACEBOOK_PAGE_ID` / `FACEBOOK_ACCESS_TOKEN` | valeurs validées lors des tests |
+
+`application-prod.yml` n'a **aucune valeur par défaut** pour `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`
+— le démarrage échouera explicitement si l'une manque, plutôt que de démarrer mal configuré.
+
+### Étape 4 — Clés JWT
+Ne pas committer les clés. Deux options :
+- **Générer directement sur le nœud** via SSH Gate Jelastic (menu du nœud → SSH), avec les mêmes
+  commandes `openssl` que pour le local (§3), puis pointer `JWT_PRIVATE_KEY_PATH`/`_PUBLIC_KEY_PATH`
+  vers leur emplacement (ex. `file:/home/jelastic/keys/private_key.pem`).
+- Ou les uploader via le **Configuration Manager** (icône dossier dans le Dashboard) dans un
+  dossier `keys/` à la racine du nœud.
+
+### Étape 5 — Déployer le jar
+Dashboard → **Deployment Manager** → **Upload** le jar de l'étape 2 → **Deploy to** → sélectionner
+l'environnement `nks-backend` → **Deploy**.
+
+### Étape 6 — Vérifier
+- Suivre `run.log` (Dashboard → nœud → Logs) pendant le démarrage — Flyway doit appliquer les
+  migrations automatiquement (schéma + seed des 8 rôles) au premier lancement.
+- **Open in Browser**, puis tester `https://<envName>.<domaine-jelastic>/api/v1/docs` (Swagger).
+- Si erreur de connexion DB : vérifier l'hôte interne PostgreSQL exact dans `DB_URL` (le nom
+  peut différer légèrement selon le provider Jelastic utilisé).
+
+### Étape 7 (optionnel) — Domaine personnalisé + SSL
+- SSL sur le domaine interne Jelastic : gratuit et automatique (wildcard SSL Jelastic).
+- Domaine personnalisé (ex. `api.laterrasse-nks.com`) : configurer un CNAME vers le domaine
+  Jelastic, puis activer le add-on **Let's Encrypt** (nécessite un load balancer certifié dans
+  l'environnement).

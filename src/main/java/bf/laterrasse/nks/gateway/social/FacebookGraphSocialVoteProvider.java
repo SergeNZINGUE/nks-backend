@@ -41,13 +41,17 @@ public class FacebookGraphSocialVoteProvider implements SocialVoteProvider {
             String champLikes = config.isCompterToutesReactions()
                     ? "reactions.summary(total_count)" : "likes.summary(true)";
 
+            // .exchangeToMono (et non .retrieve()) : Graph API renvoie souvent un corps JSON
+            // {"error": {...}} exploitable même avec un statut HTTP 4xx — .retrieve() lèverait
+            // une WebClientResponseException avant qu'on ait pu lire ce corps, et on perdrait
+            // le vrai message/code d'erreur Facebook (cas vécu : "400 Bad Request" sans détail
+            // alors que le corps contenait la cause précise).
             JsonNode response = client.get()
                     .uri(uriBuilder -> uriBuilder.path("/" + postId)
                             .queryParam("fields", champLikes + ",comments.summary(true)")
                             .queryParam("access_token", config.getAccessToken())
                             .build())
-                    .retrieve()
-                    .bodyToMono(JsonNode.class)
+                    .exchangeToMono(clientResponse -> clientResponse.bodyToMono(JsonNode.class))
                     .block();
 
             if (response == null) {
