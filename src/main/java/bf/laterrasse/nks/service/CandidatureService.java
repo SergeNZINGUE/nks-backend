@@ -72,7 +72,14 @@ public class CandidatureService {
             }
         }
 
-        Utilisateur utilisateur = utilisateurExistant != null ? utilisateurExistant : creerUtilisateurCandidat(req);
+        String motDePasseTemp = null;
+        Utilisateur utilisateur;
+        if (utilisateurExistant != null) {
+            utilisateur = utilisateurExistant;
+        } else {
+            motDePasseTemp = genererMotDePasseTemporaire();
+            utilisateur = creerUtilisateurCandidat(req, motDePasseTemp);
+        }
 
         String codeCandidat = genererCodeCandidat(edition.getId());
 
@@ -116,13 +123,20 @@ public class CandidatureService {
                 .statut(StatutVideo.DISPONIBLE)
                 .build());
 
+        String sms = "NKS : dossier reçu, code candidat " + codeCandidat
+                + (motDePasseTemp != null ? ", mot de passe temporaire : " + motDePasseTemp : "")
+                + ". Vous serez notifié après examen.";
+        String emailCorps = "<p>Bonjour " + utilisateur.getPrenom() + ",</p>"
+                + "<p>Votre dossier de candidature a bien été reçu. Votre code candidat est <strong>"
+                + codeCandidat + "</strong>.</p>"
+                + (motDePasseTemp != null
+                        ? "<p>Votre mot de passe temporaire est : <strong>" + motDePasseTemp + "</strong>."
+                                + " Changez-le dès votre première connexion.</p>"
+                        : "")
+                + "<p>L'équipe NKS l'examinera prochainement.</p>";
+
         notificationService.envoyerSmsEtEmail(utilisateur, utilisateur.getTelephone(), utilisateur.getEmail(),
-                TypeNotification.CANDIDATURE_RECUE,
-                "NKS : dossier reçu, code candidat " + codeCandidat + ". Vous serez notifié après examen.",
-                "NKS — Candidature reçue",
-                "<p>Bonjour " + utilisateur.getPrenom() + ",</p>"
-                        + "<p>Votre dossier de candidature a bien été reçu. Votre code candidat est <strong>"
-                        + codeCandidat + "</strong>.</p><p>L'équipe NKS l'examinera prochainement.</p>");
+                TypeNotification.CANDIDATURE_RECUE, sms, "NKS — Candidature reçue", emailCorps);
 
         return new CandidatureSubmitResponse(candidature.getId(), codeCandidat, candidature.getStatut().name());
     }
@@ -165,6 +179,7 @@ public class CandidatureService {
 
         try {
             Utilisateur candidat = candidature.getCandidat().getUtilisateur();
+
             notificationService.envoyerSmsEtEmail(candidat, candidat.getTelephone(), candidat.getEmail(),
                     TypeNotification.CANDIDATURE_REJETEE,
                     "NKS : votre candidature n'a pas été retenue. Motif : " + tronquer(motifRejet, 100),
@@ -231,14 +246,9 @@ public class CandidatureService {
         return candidature;
     }
 
-    private Utilisateur creerUtilisateurCandidat(CandidatureSubmitRequest req) {
+    private Utilisateur creerUtilisateurCandidat(CandidatureSubmitRequest req, String motDePasseTemp) {
         Role roleCandidat = roleRepository.findByNom(RoleName.CANDIDAT)
                 .orElseThrow(() -> new IllegalStateException("Rôle CANDIDAT absent en base — vérifier le seed V1__init_schema.sql"));
-
-        // Mot de passe temporaire aléatoire : le candidat n'en choisit pas à l'inscription
-        // (le CdC ne précise pas ce flux). Il est communiqué via le lien "mot de passe oublié"
-        // lors de sa première connexion — voir README §Décisions / Auth candidat.
-        String motDePasseTemp = genererMotDePasseTemporaire();
 
         Utilisateur utilisateur = Utilisateur.builder()
                 .email(req.email())
