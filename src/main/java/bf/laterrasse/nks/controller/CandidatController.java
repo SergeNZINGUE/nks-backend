@@ -15,6 +15,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -31,6 +32,7 @@ public class CandidatController {
     private final CurrentUserProvider currentUserProvider;
 
     @GetMapping
+    @Transactional(readOnly = true)
     public ResponseEntity<Page<CandidatPublicResponse>> galerie(
             @RequestParam UUID editionId,
             @RequestParam(required = false) StatutProfilCandidat statutProfil,
@@ -43,11 +45,13 @@ public class CandidatController {
     }
 
     @GetMapping("/{id}")
+    @Transactional(readOnly = true)
     public ResponseEntity<CandidatPublicResponse> profil(@PathVariable UUID id) {
         return ResponseEntity.ok(CandidatPublicResponse.from(getCandidat(id)));
     }
 
     @GetMapping("/code/{code}")
+    @Transactional(readOnly = true)
     public ResponseEntity<CandidatPublicResponse> parCode(@PathVariable String code, @RequestParam UUID editionId) {
         Candidat candidat = candidatRepository.findByEditionIdAndCodeCandidat(editionId, code)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidat introuvable pour le code " + code));
@@ -55,6 +59,7 @@ public class CandidatController {
     }
 
     @GetMapping("/{id}/scores")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<ResultatPhase>> scores(@PathVariable UUID id) {
         getCandidat(id); // 404 si le candidat n'existe pas
         return ResponseEntity.ok(resultatPhaseRepository.findByCandidatId(id));
@@ -62,6 +67,7 @@ public class CandidatController {
 
     @PutMapping("/mon-profil")
     @PreAuthorize("hasRole('CANDIDAT')")
+    @Transactional
     public ResponseEntity<CandidatPublicResponse> mettreAJourMonProfil(@Valid @RequestBody MettreAJourProfilRequest request) {
         UUID utilisateurId = currentUserProvider.getCurrentUserId();
         Candidat candidat = candidatRepository.findByUtilisateurId(utilisateurId)

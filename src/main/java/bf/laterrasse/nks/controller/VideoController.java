@@ -3,6 +3,7 @@ package bf.laterrasse.nks.controller;
 import bf.laterrasse.nks.domain.Video;
 import bf.laterrasse.nks.domain.enums.Enums.StatutVideo;
 import bf.laterrasse.nks.dto.video.UploaderVideoRequest;
+import bf.laterrasse.nks.dto.video.VideoPublicResponse;
 import bf.laterrasse.nks.repository.VideoRepository;
 import bf.laterrasse.nks.security.CurrentUserProvider;
 import bf.laterrasse.nks.service.VideoService;
@@ -33,9 +34,10 @@ public class VideoController {
     }
 
     @GetMapping("/candidat/{candidatId}")
-    public ResponseEntity<List<Video>> videosCandidat(@PathVariable UUID candidatId) {
-        List<Video> videos = videoRepository.findByCandidatId(candidatId).stream()
+    public ResponseEntity<List<VideoPublicResponse>> videosCandidat(@PathVariable UUID candidatId) {
+        List<VideoPublicResponse> videos = videoRepository.findByCandidatId(candidatId).stream()
                 .filter(v -> v.getStatut() == StatutVideo.DISPONIBLE)
+                .map(VideoPublicResponse::from)
                 .toList();
         return ResponseEntity.ok(videos);
     }

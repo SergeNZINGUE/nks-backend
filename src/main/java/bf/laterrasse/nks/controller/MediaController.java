@@ -1,15 +1,21 @@
 package bf.laterrasse.nks.controller;
 
 import bf.laterrasse.nks.config.MediaProperties;
+import bf.laterrasse.nks.domain.enums.Enums.StatutMedia;
+import bf.laterrasse.nks.dto.media.MediaPublicResponse;
 import bf.laterrasse.nks.dto.media.UploadUrlRequest;
 import bf.laterrasse.nks.dto.media.UploadUrlResponse;
 import bf.laterrasse.nks.exception.ValidationMetierException;
 import bf.laterrasse.nks.gateway.media.MediaStorageGateway;
 import bf.laterrasse.nks.gateway.media.PresignedUpload;
+import bf.laterrasse.nks.repository.MediaRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.UUID;
 
 import java.util.Set;
 
@@ -26,6 +32,16 @@ public class MediaController {
 
     private final MediaStorageGateway mediaStorageGateway;
     private final MediaProperties mediaProperties;
+    private final MediaRepository mediaRepository;
+
+    @GetMapping("/medias/candidat/{candidatId}")
+    public ResponseEntity<List<MediaPublicResponse>> mediasCandidat(@PathVariable UUID candidatId) {
+        List<MediaPublicResponse> medias = mediaRepository.findByCandidatId(candidatId).stream()
+                .filter(m -> m.getStatut() == StatutMedia.VALIDE)
+                .map(MediaPublicResponse::from)
+                .toList();
+        return ResponseEntity.ok(medias);
+    }
 
     @PostMapping("/medias/url-upload")
     public ResponseEntity<UploadUrlResponse> urlUploadPhoto(@Valid @RequestBody UploadUrlRequest request) {

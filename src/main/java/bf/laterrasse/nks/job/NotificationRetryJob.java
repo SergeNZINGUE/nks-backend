@@ -3,7 +3,7 @@ package bf.laterrasse.nks.job;
 import bf.laterrasse.nks.domain.Notification;
 import bf.laterrasse.nks.domain.enums.Enums.StatutEnvoiNotification;
 import bf.laterrasse.nks.repository.NotificationRepository;
-import bf.laterrasse.nks.service.NotificationService;
+import bf.laterrasse.nks.service.AsyncNotificationSender;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -18,7 +18,7 @@ public class NotificationRetryJob {
     private static final short MAX_TENTATIVES = 3;
 
     private final NotificationRepository notificationRepository;
-    private final NotificationService notificationService;
+    private final AsyncNotificationSender asyncSender;
 
     @Scheduled(fixedRate = 300_000)
     public void relancer() {
@@ -26,7 +26,7 @@ public class NotificationRetryJob {
                 .findByStatutEnvoiAndNbTentativesLessThan(StatutEnvoiNotification.ECHOUE, MAX_TENTATIVES);
 
         for (Notification notification : echouees) {
-            notificationService.tenterEnvoi(notification);
+            asyncSender.tenterEnvoi(notification);
         }
         if (!echouees.isEmpty()) {
             log.info("{} notification(s) en échec relancée(s)", echouees.size());

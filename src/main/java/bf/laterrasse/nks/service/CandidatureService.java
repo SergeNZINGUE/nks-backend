@@ -109,6 +109,7 @@ public class CandidatureService {
                 .candidat(candidat)
                 .phase(null) // vidéo de présélection, cf. §8.2 Vidéo : phase_id NULL si présélection
                 .urlStockageOriginale(req.urlVideo())
+                .urlStreaming(req.urlVideo())
                 .dureeSecondes(req.dureeVideoSecondes())
                 .tailleOctets(req.tailleVideoOctets())
                 .titreChanson(req.chansonPreselection())
@@ -136,13 +137,17 @@ public class CandidatureService {
         candidature.setDateModification(Instant.now());
         candidatureRepository.save(candidature);
 
-        Utilisateur candidat = candidature.getCandidat().getUtilisateur();
-        notificationService.envoyerSmsEtEmail(candidat, candidat.getTelephone(), candidat.getEmail(),
-                TypeNotification.CANDIDATURE_VALIDEE,
-                "NKS : candidature acceptée ! Connectez-vous pour régler vos frais d'inscription.",
-                "NKS — Candidature acceptée",
-                "<p>Félicitations, votre candidature a été acceptée. Connectez-vous à votre espace pour"
-                        + " procéder au paiement des frais d'inscription et activer votre profil.</p>");
+        try {
+            Utilisateur candidat = candidature.getCandidat().getUtilisateur();
+            notificationService.envoyerSmsEtEmail(candidat, candidat.getTelephone(), candidat.getEmail(),
+                    TypeNotification.CANDIDATURE_VALIDEE,
+                    "NKS : candidature acceptée ! Connectez-vous pour régler vos frais d'inscription.",
+                    "NKS — Candidature acceptée",
+                    "<p>Félicitations, votre candidature a été acceptée. Connectez-vous à votre espace pour"
+                            + " procéder au paiement des frais d'inscription et activer votre profil.</p>");
+        } catch (Exception e) {
+            log.warn("Notifications non envoyées pour validation candidature {} : {}", candidatureId, e.getMessage());
+        }
 
         return candidature;
     }
@@ -158,13 +163,17 @@ public class CandidatureService {
         candidature.setDateModification(Instant.now());
         candidatureRepository.save(candidature);
 
-        Utilisateur candidat = candidature.getCandidat().getUtilisateur();
-        notificationService.envoyerSmsEtEmail(candidat, candidat.getTelephone(), candidat.getEmail(),
-                TypeNotification.CANDIDATURE_REJETEE,
-                "NKS : votre candidature n'a pas été retenue. Motif : " + tronquer(motifRejet, 100),
-                "NKS — Candidature non retenue",
-                "<p>Nous vous remercions pour votre candidature. Elle n'a malheureusement pas été retenue.</p>"
-                        + "<p><strong>Motif :</strong> " + motifRejet + "</p>");
+        try {
+            Utilisateur candidat = candidature.getCandidat().getUtilisateur();
+            notificationService.envoyerSmsEtEmail(candidat, candidat.getTelephone(), candidat.getEmail(),
+                    TypeNotification.CANDIDATURE_REJETEE,
+                    "NKS : votre candidature n'a pas été retenue. Motif : " + tronquer(motifRejet, 100),
+                    "NKS — Candidature non retenue",
+                    "<p>Nous vous remercions pour votre candidature. Elle n'a malheureusement pas été retenue.</p>"
+                            + "<p><strong>Motif :</strong> " + motifRejet + "</p>");
+        } catch (Exception e) {
+            log.warn("Notifications non envoyées pour rejet candidature {} : {}", candidatureId, e.getMessage());
+        }
 
         return candidature;
     }
@@ -200,13 +209,17 @@ public class CandidatureService {
         candidat.setDateActivationProfil(Instant.now());
         candidatRepository.save(candidat);
 
-        Utilisateur utilisateur = candidat.getUtilisateur();
-        notificationService.envoyerSmsEtEmail(utilisateur, utilisateur.getTelephone(), utilisateur.getEmail(),
-                TypeNotification.PROFIL_ACTIVE,
-                "NKS : paiement confirmé, votre profil est désormais actif et visible publiquement !",
-                "NKS — Profil activé",
-                "<p>Votre paiement a été confirmé. Votre profil candidat est maintenant actif et visible"
-                        + " sur la galerie publique NKS.</p>");
+        try {
+            Utilisateur utilisateur = candidat.getUtilisateur();
+            notificationService.envoyerSmsEtEmail(utilisateur, utilisateur.getTelephone(), utilisateur.getEmail(),
+                    TypeNotification.PROFIL_ACTIVE,
+                    "NKS : paiement confirmé, votre profil est désormais actif et visible publiquement !",
+                    "NKS — Profil activé",
+                    "<p>Votre paiement a été confirmé. Votre profil candidat est maintenant actif et visible"
+                            + " sur la galerie publique NKS.</p>");
+        } catch (Exception e) {
+            log.warn("Notifications non envoyées pour activation profil candidature {} : {}", candidatureId, e.getMessage());
+        }
     }
 
     private Candidature getCandidatureEnAttente(UUID candidatureId) {

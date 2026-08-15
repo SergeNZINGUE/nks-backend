@@ -7,6 +7,7 @@ public record DashboardResponse(
         long candidatsTotal,
         long candidatsValides,
         long candidatsEnAttente,
+        long candidatsEnAttentePaiement,
         long candidatsRejetes,
         Map<String, Long> votesTotauxParPhase,
         BigDecimal revenusInscriptions,

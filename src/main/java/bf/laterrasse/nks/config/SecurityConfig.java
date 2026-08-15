@@ -42,7 +42,7 @@ public class SecurityConfig {
     private String allowedOrigins;
 
     private static final String[] PUBLIC_GET_ENDPOINTS = {
-            "/candidats/**", "/videos/candidat/**", "/editions/**", "/soirees/**",
+            "/candidats/**", "/videos/candidat/**", "/medias/candidat/**", "/editions/**", "/soirees/**",
             "/partenaires/**", "/classement/**", "/resultats/**", "/votes/candidat/**",
             "/duos/phase/**", "/poules/*/candidats", "/docs/**", "/api-docs/**",
             "/swagger-ui/**", "/swagger-ui.html", "/actuator/health"

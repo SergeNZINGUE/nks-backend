@@ -44,6 +44,7 @@ public class VideoService {
                 .orElse(Video.builder().candidat(candidat).phase(phase).build());
 
         video.setUrlStockageOriginale(request.urlVideo());
+        video.setUrlStreaming(request.urlVideo());
         video.setDureeSecondes(request.dureeSecondes());
         video.setTailleOctets(request.tailleOctets());
         video.setTitreChanson(request.titreChanson());

@@ -36,13 +36,18 @@ public class AdminDashboardService {
                 .orElseThrow(() -> new ResourceNotFoundException("Aucune édition en cours"));
 
         long total = candidatRepository.countByEditionId(edition.getId());
+
         long valides = candidatureRepository.findAll().stream()
                 .filter(c -> c.getEdition().getId().equals(edition.getId()))
                 .filter(c -> c.getStatut() == StatutCandidature.ACTIVE).count();
+
         long enAttente = candidatureRepository.findAll().stream()
                 .filter(c -> c.getEdition().getId().equals(edition.getId()))
-                .filter(c -> c.getStatut() == StatutCandidature.EN_ATTENTE
-                        || c.getStatut() == StatutCandidature.EN_ATTENTE_PAIEMENT).count();
+                .filter(c -> c.getStatut() == StatutCandidature.EN_ATTENTE).count();
+        long enAttentePaiement = candidatureRepository.findAll().stream()
+                .filter(c -> c.getEdition().getId().equals(edition.getId()))
+                .filter(c -> c.getStatut() == StatutCandidature.EN_ATTENTE_PAIEMENT).count();
+
         long rejetees = candidatureRepository.findAll().stream()
                 .filter(c -> c.getEdition().getId().equals(edition.getId()))
                 .filter(c -> c.getStatut() == StatutCandidature.REJETEE).count();
@@ -63,7 +68,7 @@ public class AdminDashboardService {
                         : (double) c.getNbPlacesReservees() / c.getNbPlacesDisponibles() * 100)
                 .average().orElse(0);
 
-        return new DashboardResponse(total, valides, enAttente, rejetees, votesParPhase,
+        return new DashboardResponse(total, valides, enAttente, enAttentePaiement,rejetees, votesParPhase,
                 revenusInscriptions, revenusVotes, revenusBillets, tauxRemplissage);
     }
 
