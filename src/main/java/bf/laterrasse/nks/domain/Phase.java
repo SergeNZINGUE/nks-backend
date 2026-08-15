@@ -2,6 +2,7 @@ package bf.laterrasse.nks.domain;
 
 import bf.laterrasse.nks.domain.enums.Enums.NomPhase;
 import bf.laterrasse.nks.domain.enums.Enums.StatutPhase;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -28,6 +29,7 @@ public class Phase {
     @Column(columnDefinition = "uuid")
     private UUID id;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "edition_id", nullable = false)
     private Edition edition;

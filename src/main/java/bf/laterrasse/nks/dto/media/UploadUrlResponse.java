@@ -4,8 +4,8 @@ import java.util.Map;
 
 public record UploadUrlResponse(
         String uploadUrl,
-        Map<String, String> champs,
-        long expireDansSecondes,
+        Map<String, String> fields,
+        long expiresInSeconds,
         String publicId
 ) {
 }
