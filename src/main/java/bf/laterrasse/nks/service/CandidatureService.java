@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -65,7 +66,9 @@ public class CandidatureService {
 
         if (utilisateurExistant != null) {
             boolean dejaCandidatSurEdition = candidatRepository.findByUtilisateurId(utilisateurExistant.getId())
-                    .map(c -> candidatureRepository.existsByCandidatIdAndEditionId(c.getId(), edition.getId()))
+                    .map(c -> candidatureRepository.existsByCandidatIdAndEditionIdAndStatutIn(
+                            c.getId(), edition.getId(),
+                            List.of(StatutCandidature.EN_ATTENTE, StatutCandidature.EN_ATTENTE_PAIEMENT, StatutCandidature.ACTIVE)))
                     .orElse(false);
             if (dejaCandidatSurEdition) {
                 throw new ConflitEtatException("Une candidature existe déjà pour ce numéro sur cette édition (RM-08)");
