@@ -26,7 +26,7 @@ public class NotificationRetryJob {
                 .findByStatutEnvoiAndNbTentativesLessThan(StatutEnvoiNotification.ECHOUE, MAX_TENTATIVES);
 
         for (Notification notification : echouees) {
-            asyncSender.tenterEnvoi(notification);
+            asyncSender.tenterEnvoi(notification.getId());
         }
         if (!echouees.isEmpty()) {
             log.info("{} notification(s) en échec relancée(s)", echouees.size());

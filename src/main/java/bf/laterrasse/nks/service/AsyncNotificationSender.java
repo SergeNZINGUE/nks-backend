@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Bean séparé requis pour que @Async soit honoré — Spring AOP ne peut pas intercepter
@@ -31,7 +32,12 @@ public class AsyncNotificationSender {
 
     @Async
     @Transactional
-    public void tenterEnvoi(Notification notification) {
+    public void tenterEnvoi(UUID notificationId) {
+        Notification notification = notificationRepository.findById(notificationId).orElse(null);
+        if (notification == null) {
+            log.error("Notification introuvable en base : {}", notificationId);
+            return;
+        }
         if (notification.getNbTentatives() >= MAX_TENTATIVES) {
             return;
         }

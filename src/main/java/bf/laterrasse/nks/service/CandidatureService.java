@@ -35,7 +35,7 @@ import java.util.UUID;
 @Slf4j
 public class CandidatureService {
 
-    private static final int AGE_MINIMUM = 20;
+    private static final int AGE_MINIMUM = 18;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final UtilisateurRepository utilisateurRepository;

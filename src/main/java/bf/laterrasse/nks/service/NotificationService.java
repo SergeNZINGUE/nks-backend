@@ -9,6 +9,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.util.UUID;
 
 /**
  * US-37/US-38 : notifications SMS + e-mail automatiques à chaque étape clé, 3 tentatives
@@ -34,7 +38,13 @@ public class NotificationService {
                 .corpsMessage(message)
                 .build();
         notificationRepository.save(notification);
-        asyncSender.tenterEnvoi(notification);
+        UUID id = notification.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                asyncSender.tenterEnvoi(id);
+            }
+        });
     }
 
     @Transactional
@@ -48,7 +58,13 @@ public class NotificationService {
                 .corpsMessage(corpsHtml)
                 .build();
         notificationRepository.save(notification);
-        asyncSender.tenterEnvoi(notification);
+        UUID id = notification.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                asyncSender.tenterEnvoi(id);
+            }
+        });
     }
 
     /** Envoie SMS + e-mail pour les événements clés qui doivent doubler les deux canaux (US-04, US-37). */
