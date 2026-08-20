@@ -320,6 +320,29 @@ Dans le Dashboard → nœud Spring Boot → **Variables**, ajouter (valeurs issu
 `application-prod.yml` n'a **aucune valeur par défaut** pour `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`
 — le démarrage échouera explicitement si l'une manque, plutôt que de démarrer mal configuré.
 
+**⚠️ Piège 1 — chaque profil actif doit avoir son `application-<profil>.yml`.** Si
+`SPRING_PROFILES_ACTIVE` pointe vers un profil (ex. `homol`) pour lequel il n'existe **aucun**
+fichier `src/main/resources/application-<profil>.yml`, aucune valeur de `DB_URL` n'est chargée
+et le démarrage échoue avec `Failed to determine a suitable driver class` /
+`Failed to configure a DataSource` — même si la variable d'environnement `DB_URL` est bien
+définie côté Jelastic. Avant de créer un nouvel environnement (homologation, staging...), créer
+d'abord son fichier de profil dédié (copier `application-prod.yml`, ajuster si besoin).
+
+**⚠️ Piège 2 — propagation des variables d'environnement Jelastic.** Il arrive qu'une variable
+ajoutée/modifiée dans le panneau **Variables** d'un nœud (visible et correcte en `echo $VAR` dans
+une session SSH interactive) ne soit **pas** propagée au service systemd qui lance l'appli
+(`springboot.service` tourne indépendamment des sessions SSH et ne source aucun profil shell).
+Symptôme : crash au démarrage avec `DataSource`/`DB_URL` vide alors que la variable "existe". Le
+diagnostic passe par `/var/log/run.log` (pas `journalctl`, qui peut être vide côté utilisateur
+non-root) :
+```bash
+tail -150 /var/log/run.log
+```
+**Fix qui a fonctionné en pratique :** retourner dans le panneau Variables d'environnement du
+nœud concerné et **re-sauvegarder** (supprimer/réajouter ou simplement re-valider) les variables
+concernées — cela redéclenche la synchronisation complète côté Jelastic. Puis
+`sudo systemctl restart springboot`.
+
 ### Étape 4 — Clés JWT
 Ne pas committer les clés. Deux options :
 - **Générer directement sur le nœud** via SSH Gate Jelastic (menu du nœud → SSH), avec les mêmes
