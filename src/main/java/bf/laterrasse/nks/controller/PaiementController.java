@@ -1,8 +1,9 @@
 package bf.laterrasse.nks.controller;
 
-import bf.laterrasse.nks.domain.Paiement;
 import bf.laterrasse.nks.dto.paiement.InitierPaiementRequest;
 import bf.laterrasse.nks.dto.paiement.InitierPaiementResponse;
+import bf.laterrasse.nks.dto.paiement.PaiementResponse;
+import bf.laterrasse.nks.exception.AccesRefuseException;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.repository.PaiementRepository;
 import bf.laterrasse.nks.security.CurrentUserProvider;
@@ -13,6 +14,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -37,20 +40,36 @@ public class PaiementController {
 
     @GetMapping("/{id}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<Paiement> detail(@PathVariable UUID id) {
-        return ResponseEntity.ok(paiementRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable")));
+    @Transactional(readOnly = true)
+    public ResponseEntity<PaiementResponse> detail(@PathVariable UUID id) {
+        var paiement = paiementRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable"));
+
+        boolean estAdmin = SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
+
+        if (!estAdmin) {
+            UUID currentUserId = currentUserProvider.getCurrentUserId();
+            if (paiement.getUtilisateur() == null || !paiement.getUtilisateur().getId().equals(currentUserId)) {
+                throw new AccesRefuseException("Accès refusé : ce paiement ne vous appartient pas");
+            }
+        }
+
+        return ResponseEntity.ok(PaiementResponse.from(paiement));
     }
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<Page<Paiement>> lister(Pageable pageable) {
-        return ResponseEntity.ok(paiementRepository.findAll(pageable));
+    @Transactional(readOnly = true)
+    public ResponseEntity<Page<PaiementResponse>> lister(Pageable pageable) {
+        Page<PaiementResponse> result = paiementRepository.findAll(pageable).map(PaiementResponse::from);
+        return ResponseEntity.ok(result);
     }
 
     @PutMapping("/{id}/confirmer-manuellement")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<Paiement> confirmerManuellement(@PathVariable UUID id, @RequestBody Map<String, String> body) {
-        return ResponseEntity.ok(paiementService.confirmerManuellement(id, body.get("reference")));
+    @Transactional
+    public ResponseEntity<PaiementResponse> confirmerManuellement(@PathVariable UUID id, @RequestBody Map<String, String> body) {
+        return ResponseEntity.ok(PaiementResponse.from(paiementService.confirmerManuellement(id, body.get("reference"))));
     }
 }

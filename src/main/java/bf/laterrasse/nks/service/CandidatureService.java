@@ -59,6 +59,8 @@ public class CandidatureService {
         validerMotivation(req.motivation());
         validerVideo(req.dureeVideoSecondes(), req.tailleVideoOctets());
         validerPhoto(req.taillePhotoOctets());
+        validerUrlMedia(req.urlPhoto());
+        validerUrlMedia(req.urlVideo());
 
         Utilisateur utilisateurExistant = utilisateurRepository
                 .findByTelephoneAndDateSuppressionIsNull(req.telephone())
@@ -314,6 +316,16 @@ public class CandidatureService {
         byte[] bytes = new byte[18];
         RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private void validerUrlMedia(String url) {
+        String cloudName = mediaProperties.getCloudinary().getCloudName();
+        if (url != null && cloudName != null && !cloudName.isBlank()) {
+            String expectedPrefix = "https://res.cloudinary.com/" + cloudName + "/";
+            if (!url.startsWith(expectedPrefix)) {
+                throw new ValidationMetierException("URL média invalide : le fichier doit être hébergé sur Cloudinary");
+            }
+        }
     }
 
     private String tronquer(String s, int max) {

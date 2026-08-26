@@ -1,6 +1,5 @@
 package bf.laterrasse.nks.controller;
 
-import bf.laterrasse.nks.domain.Video;
 import bf.laterrasse.nks.domain.enums.Enums.StatutVideo;
 import bf.laterrasse.nks.dto.video.UploaderVideoRequest;
 import bf.laterrasse.nks.dto.video.VideoPublicResponse;
@@ -28,9 +27,9 @@ public class VideoController {
 
     @PostMapping
     @PreAuthorize("hasRole('CANDIDAT')")
-    public ResponseEntity<Video> uploader(@Valid @RequestBody UploaderVideoRequest request) {
+    public ResponseEntity<VideoPublicResponse> uploader(@Valid @RequestBody UploaderVideoRequest request) {
         UUID utilisateurId = currentUserProvider.getCurrentUserId();
-        return ResponseEntity.status(201).body(videoService.uploaderPourPhase(utilisateurId, request));
+        return ResponseEntity.status(201).body(VideoPublicResponse.from(videoService.uploaderPourPhase(utilisateurId, request)));
     }
 
     @GetMapping("/candidat/{candidatId}")

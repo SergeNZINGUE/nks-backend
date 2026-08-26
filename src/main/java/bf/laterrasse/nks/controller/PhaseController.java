@@ -36,6 +36,14 @@ public class PhaseController {
         return ResponseEntity.ok(phaseRepository.save(phase));
     }
 
+    @PutMapping("/{id}/activer")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Phase> activer(@PathVariable UUID id) {
+        Phase phase = getPhase(id);
+        phase.setStatut(StatutPhase.EN_COURS);
+        return ResponseEntity.ok(phaseRepository.save(phase));
+    }
+
     @PutMapping("/{id}/cloturer")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<Phase> cloturer(@PathVariable UUID id) {

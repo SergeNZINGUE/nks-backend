@@ -1,7 +1,7 @@
 package bf.laterrasse.nks.controller;
 
 import bf.laterrasse.nks.domain.CategorieTicket;
-import bf.laterrasse.nks.domain.Reservation;
+import bf.laterrasse.nks.dto.billetterie.ReservationPublicResponse;
 import bf.laterrasse.nks.dto.billetterie.ReservationRequest;
 import bf.laterrasse.nks.dto.billetterie.ReservationResponse;
 import bf.laterrasse.nks.repository.CategorieTicketRepository;
@@ -14,6 +14,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -41,8 +42,12 @@ public class BilletterieController {
     }
 
     @GetMapping("/reservations/mes-tickets")
-    public ResponseEntity<List<Reservation>> mesTickets(@RequestParam String telephone) {
-        return ResponseEntity.ok(reservationRepository.findByTelephoneReservant(telephone));
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<ReservationPublicResponse>> mesTickets(@RequestParam String telephone) {
+        List<ReservationPublicResponse> result = reservationRepository.findByTelephoneReservant(telephone).stream()
+                .map(ReservationPublicResponse::from)
+                .toList();
+        return ResponseEntity.ok(result);
     }
 
     @DeleteMapping("/reservations/{id}")
@@ -53,21 +58,26 @@ public class BilletterieController {
 
     @PostMapping("/admin/billetterie/tickets-gratuits")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<Reservation> ticketsGratuits(@RequestBody Map<String, Object> body) {
+    @Transactional
+    public ResponseEntity<ReservationPublicResponse> ticketsGratuits(@RequestBody Map<String, Object> body) {
         var admin = currentUserProvider.getCurrentUser();
         UUID soireeId = UUID.fromString((String) body.get("soireeId"));
         UUID categorieId = UUID.fromString((String) body.get("categorieId"));
         String nom = (String) body.get("nom");
         String telephone = (String) body.get("telephone");
         int nbPlaces = ((Number) body.get("nbPlaces")).intValue();
-        return ResponseEntity.status(201).body(
+        ReservationPublicResponse result = ReservationPublicResponse.from(
                 billetterieService.genererTicketsGratuits(soireeId, categorieId, nom, telephone, nbPlaces, admin));
+        return ResponseEntity.status(201).body(result);
     }
 
     @GetMapping("/admin/billetterie/reservations")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<Page<Reservation>> reservationsAdmin(@RequestParam UUID soireeId, Pageable pageable) {
-        return ResponseEntity.ok(reservationRepository.findBySoireeId(soireeId, pageable));
+    @Transactional(readOnly = true)
+    public ResponseEntity<Page<ReservationPublicResponse>> reservationsAdmin(@RequestParam UUID soireeId, Pageable pageable) {
+        Page<ReservationPublicResponse> result = reservationRepository.findBySoireeId(soireeId, pageable)
+                .map(ReservationPublicResponse::from);
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/admin/billetterie/categories")

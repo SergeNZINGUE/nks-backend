@@ -1,9 +1,10 @@
 package bf.laterrasse.nks.controller;
 
-import bf.laterrasse.nks.domain.Jury;
+import bf.laterrasse.nks.dto.admin.AuditLogResponse;
 import bf.laterrasse.nks.dto.admin.CommunicationRequest;
 import bf.laterrasse.nks.dto.admin.CreerJuryRequest;
 import bf.laterrasse.nks.dto.admin.DashboardResponse;
+import bf.laterrasse.nks.dto.jury.JuryResponse;
 import bf.laterrasse.nks.repository.AuditLogRepository;
 import bf.laterrasse.nks.repository.JuryRepository;
 import bf.laterrasse.nks.service.AdminDashboardService;
@@ -18,6 +19,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -49,13 +51,18 @@ public class AdminController {
     }
 
     @GetMapping("/jury")
-    public ResponseEntity<List<Jury>> jury(@RequestParam UUID editionId) {
-        return ResponseEntity.ok(juryRepository.findByEditionId(editionId));
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<JuryResponse>> jury(@RequestParam UUID editionId) {
+        List<JuryResponse> result = juryRepository.findByEditionId(editionId).stream()
+                .map(JuryResponse::from)
+                .toList();
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/jury")
-    public ResponseEntity<Jury> creerJury(@Valid @RequestBody CreerJuryRequest request) {
-        return ResponseEntity.status(201).body(juryAdminService.creer(request));
+    @Transactional
+    public ResponseEntity<JuryResponse> creerJury(@Valid @RequestBody CreerJuryRequest request) {
+        return ResponseEntity.status(201).body(JuryResponse.from(juryAdminService.creer(request)));
     }
 
     @DeleteMapping("/jury/{id}")
@@ -77,8 +84,11 @@ public class AdminController {
     }
 
     @GetMapping("/audit-logs")
-    public ResponseEntity<Page<bf.laterrasse.nks.domain.AuditLog>> auditLogs(Pageable pageable) {
-        return ResponseEntity.ok(auditLogRepository.findAllByOrderByTimestampDesc(pageable));
+    @Transactional(readOnly = true)
+    public ResponseEntity<Page<AuditLogResponse>> auditLogs(Pageable pageable) {
+        Page<AuditLogResponse> result = auditLogRepository.findAllByOrderByTimestampDesc(pageable)
+                .map(AuditLogResponse::from);
+        return ResponseEntity.ok(result);
     }
 
     private ResponseEntity<byte[]> csvResponse(byte[] content, String filename) {

@@ -1,10 +1,10 @@
 package bf.laterrasse.nks.controller;
 
 import bf.laterrasse.nks.domain.Candidat;
-import bf.laterrasse.nks.domain.ResultatPhase;
 import bf.laterrasse.nks.domain.enums.Enums.StatutProfilCandidat;
 import bf.laterrasse.nks.dto.candidat.CandidatPublicResponse;
 import bf.laterrasse.nks.dto.candidat.MettreAJourProfilRequest;
+import bf.laterrasse.nks.dto.classement.ResultatPhaseResponse;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.repository.CandidatRepository;
 import bf.laterrasse.nks.repository.ResultatPhaseRepository;
@@ -60,9 +60,12 @@ public class CandidatController {
 
     @GetMapping("/{id}/scores")
     @Transactional(readOnly = true)
-    public ResponseEntity<List<ResultatPhase>> scores(@PathVariable UUID id) {
+    public ResponseEntity<List<ResultatPhaseResponse>> scores(@PathVariable UUID id) {
         getCandidat(id); // 404 si le candidat n'existe pas
-        return ResponseEntity.ok(resultatPhaseRepository.findByCandidatId(id));
+        List<ResultatPhaseResponse> result = resultatPhaseRepository.findByCandidatId(id).stream()
+                .map(ResultatPhaseResponse::from)
+                .toList();
+        return ResponseEntity.ok(result);
     }
 
     @PutMapping("/mon-profil")
