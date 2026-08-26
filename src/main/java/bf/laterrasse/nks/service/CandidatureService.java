@@ -320,7 +320,8 @@ public class CandidatureService {
 
     private void validerUrlMedia(String url) {
         String cloudName = mediaProperties.getCloudinary().getCloudName();
-        if (url != null && cloudName != null && !cloudName.isBlank()) {
+        // Les blob:// URLs sont un fallback frontend dev-only — jamais hébergées sur Cloudinary
+        if (url != null && cloudName != null && !cloudName.isBlank() && url.startsWith("https://")) {
             String expectedPrefix = "https://res.cloudinary.com/" + cloudName + "/";
             if (!url.startsWith(expectedPrefix)) {
                 throw new ValidationMetierException("URL média invalide : le fichier doit être hébergé sur Cloudinary");
