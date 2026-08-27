@@ -134,16 +134,16 @@ public class CandidatureService {
 
         String sms = "NKS : dossier reçu, code candidat " + codeCandidat
                 + (motDePasseTemp != null ? ", mot de passe temporaire : " + motDePasseTemp : "")
-                + ". Vous serez notifié après examen.";
+                + ". Vous serez notifie apres examen.";
 
-        String contenu = "<p style=\"margin:0 0 8px;\">Votre dossier de candidature a bien été reçu. Votre code candidat est :</p>"
+        String contenu = "<p style=\"margin:0 0 8px;\">Votre dossier de candidature a bien ete reçu. Votre code candidat est :</p>"
                 + notificationService.encadre(codeCandidat, true)
                 + (motDePasseTemp != null
                 ? "<p style=\"margin:20px 0 8px;\">Votre mot de passe temporaire :</p>"
                   + notificationService.encadre(motDePasseTemp, true)
-                  + "<p style=\"margin:10px 0 0;font-size:13px;color:#F39C12;\">À changer dès votre première connexion.</p>"
+                  + "<p style=\"margin:10px 0 0;font-size:13px;color:#F39C12;\">À changer des votre premiere connexion.</p>"
                 : "")
-                + "<p style=\"margin:20px 0 0;\">L'équipe NKS examinera votre dossier prochainement.</p>";
+                + "<p style=\"margin:20px 0 0;\">L equipe NKS examinera votre dossier prochainement.</p>";
 
 
         String emailCorps = notificationService.construireEmailHtml(utilisateur.getPrenom(), "Candidature reçue", contenu,
@@ -166,15 +166,22 @@ public class CandidatureService {
 
         try {
             Utilisateur candidat = candidature.getCandidat().getUtilisateur();
+
+            String contenu = "<p style=\"margin:0;\">Félicitations, votre candidature a été acceptée. Connectez-vous à votre"
+                    + " espace pour procéder au paiement des frais d'inscription et activer votre profil. Ou réglez par Orange Monnaie sur le numero : 06071717</p>";
+
+            String emailCorps = notificationService.construireEmailHtml(candidat.getPrenom(), "Candidature acceptée", contenu,
+                    "Payer mes frais d'inscription", frontendBaseUrl + "/login");
+
             notificationService.envoyerSmsEtEmail(candidat, candidat.getTelephone(), candidat.getEmail(),
                     TypeNotification.CANDIDATURE_VALIDEE,
-                    "NKS : candidature acceptee ! Regler vos frais d'inscription via OM : 06071717.",
-                    "NKS — Candidature acceptée",
-                    "<p>Félicitations, votre candidature a été acceptée. Connectez-vous à votre espace pour"
-                            + " procéder au paiement des frais d'inscription ou via OM : 06071717 et activer votre profil.</p>");
+                    "NKS : candidature acceptee ! Connectez-vous pour regler vos frais d'inscription. https://laterrasse.bf ou via OM: 06071717",
+                    "NKS — Candidature acceptée", emailCorps);
+
         } catch (Exception e) {
             log.warn("Notifications non envoyées pour validation candidature {} : {}", candidatureId, e.getMessage());
         }
+
 
         return candidature;
     }
@@ -193,12 +200,18 @@ public class CandidatureService {
         try {
             Utilisateur candidat = candidature.getCandidat().getUtilisateur();
 
+            String contenu = "<p style=\"margin:0 0 16px;\">Nous vous remercions pour votre candidature. Elle n'a"
+                    + " malheureusement pas été retenue.</p>"
+                    + "<p style=\"margin:0 0 6px;color:#FFFFFF;font-weight:700;\">Motif :</p>"
+                    + "<p style=\"margin:0;\">" + motifRejet + "</p>";
+
+            String emailCorps = notificationService.construireEmailHtml(candidat.getPrenom(), "Candidature non retenue", contenu, null, null);
+
             notificationService.envoyerSmsEtEmail(candidat, candidat.getTelephone(), candidat.getEmail(),
                     TypeNotification.CANDIDATURE_REJETEE,
-                    "NKS : votre candidature n'a pas été retenue. Motif : " + tronquer(motifRejet, 100),
-                    "NKS — Candidature non retenue",
-                    "<p>Nous vous remercions pour votre candidature. Elle n'a malheureusement pas été retenue.</p>"
-                            + "<p><strong>Motif :</strong> " + motifRejet + "</p>");
+                    "NKS : votre candidature n'a pas ete retenue. Motif : " + tronquer(motifRejet, 100),
+                    "NKS — Candidature non retenue", emailCorps);
+
         } catch (Exception e) {
             log.warn("Notifications non envoyées pour rejet candidature {} : {}", candidatureId, e.getMessage());
         }
@@ -239,12 +252,17 @@ public class CandidatureService {
 
         try {
             Utilisateur utilisateur = candidat.getUtilisateur();
+            String contenu = "<p style=\"margin:0;\">Votre paiement a été confirmé. Votre profil candidat est maintenant"
+                    + " actif et visible sur la galerie publique NKS.</p>";
+
+            String emailCorps = notificationService.construireEmailHtml(utilisateur.getPrenom(), "Profil activé", contenu,
+                    "Voir mon profil public", frontendBaseUrl + "/galerie");
+
             notificationService.envoyerSmsEtEmail(utilisateur, utilisateur.getTelephone(), utilisateur.getEmail(),
                     TypeNotification.PROFIL_ACTIVE,
                     "NKS : paiement confirmé, votre profil est désormais actif et visible publiquement !",
-                    "NKS — Profil activé",
-                    "<p>Votre paiement a été confirmé. Votre profil candidat est maintenant actif et visible"
-                            + " sur la galerie publique NKS.</p>");
+                    "NKS — Profil activé", emailCorps);
+
         } catch (Exception e) {
             log.warn("Notifications non envoyées pour activation profil candidature {} : {}", candidatureId, e.getMessage());
         }
