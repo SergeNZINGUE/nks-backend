@@ -56,6 +56,7 @@ nks:
 
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:4200}
 
   media:
     provider: cloudinary # cloudinary | s3

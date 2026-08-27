@@ -12,6 +12,7 @@ import bf.laterrasse.nks.exception.ValidationMetierException;
 import bf.laterrasse.nks.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,9 @@ public class CandidatureService {
 
     private static final int AGE_MINIMUM = 18;
     private static final SecureRandom RANDOM = new SecureRandom();
+
+    @Value("${nks.frontend-base-url:http://localhost:4200}")
+    private String frontendBaseUrl;
 
     private final UtilisateurRepository utilisateurRepository;
     private final CandidatRepository candidatRepository;
@@ -131,18 +135,22 @@ public class CandidatureService {
         String sms = "NKS : dossier reçu, code candidat " + codeCandidat
                 + (motDePasseTemp != null ? ", mot de passe temporaire : " + motDePasseTemp : "")
                 + ". Vous serez notifié après examen.";
-        String emailCorps = "<p>Bonjour " + utilisateur.getPrenom() + ",</p>"
-                + "<p>Votre dossier de candidature a bien été reçu. Votre code candidat est <strong>"
-                + codeCandidat + "</strong>.</p>"
+
+        String contenu = "<p style=\"margin:0 0 8px;\">Votre dossier de candidature a bien été reçu. Votre code candidat est :</p>"
+                + notificationService.encadre(codeCandidat, true)
                 + (motDePasseTemp != null
-                        ? "<p>Votre mot de passe temporaire est : <strong>" + motDePasseTemp + "</strong>."
-                                + " Changez-le dès votre première connexion.</p>"
-                        : "")
-                + "<p>L'équipe NKS l'examinera prochainement.</p>";
+                ? "<p style=\"margin:20px 0 8px;\">Votre mot de passe temporaire :</p>"
+                  + notificationService.encadre(motDePasseTemp, true)
+                  + "<p style=\"margin:10px 0 0;font-size:13px;color:#F39C12;\">À changer dès votre première connexion.</p>"
+                : "")
+                + "<p style=\"margin:20px 0 0;\">L'équipe NKS examinera votre dossier prochainement.</p>";
+
+
+        String emailCorps = notificationService.construireEmailHtml(utilisateur.getPrenom(), "Candidature reçue", contenu,
+                "Accéder à mon espace", frontendBaseUrl + "/login");
 
         notificationService.envoyerSmsEtEmail(utilisateur, utilisateur.getTelephone(), utilisateur.getEmail(),
                 TypeNotification.CANDIDATURE_RECUE, sms, "NKS — Candidature reçue", emailCorps);
-
         return new CandidatureSubmitResponse(candidature.getId(), codeCandidat, candidature.getStatut().name());
     }
 
@@ -160,10 +168,10 @@ public class CandidatureService {
             Utilisateur candidat = candidature.getCandidat().getUtilisateur();
             notificationService.envoyerSmsEtEmail(candidat, candidat.getTelephone(), candidat.getEmail(),
                     TypeNotification.CANDIDATURE_VALIDEE,
-                    "NKS : candidature acceptée ! Connectez-vous pour régler vos frais d'inscription.",
+                    "NKS : candidature acceptee ! Regler vos frais d'inscription via OM : 06071717.",
                     "NKS — Candidature acceptée",
                     "<p>Félicitations, votre candidature a été acceptée. Connectez-vous à votre espace pour"
-                            + " procéder au paiement des frais d'inscription et activer votre profil.</p>");
+                            + " procéder au paiement des frais d'inscription ou via OM : 06071717 et activer votre profil.</p>");
         } catch (Exception e) {
             log.warn("Notifications non envoyées pour validation candidature {} : {}", candidatureId, e.getMessage());
         }
