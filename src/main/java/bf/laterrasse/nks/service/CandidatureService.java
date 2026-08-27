@@ -40,7 +40,7 @@ public class CandidatureService {
     private static final int AGE_MINIMUM = 18;
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    @Value("${nks.frontend-base-url:http://localhost:4200}")
+    @Value("${nks.frontend-base-url}")
     private String frontendBaseUrl;
 
     private final UtilisateurRepository utilisateurRepository;

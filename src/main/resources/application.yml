@@ -56,7 +56,7 @@ nks:
 
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
-  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:4200}
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:4200}  # dev uniquement — FRONTEND_BASE_URL obligatoire en homol/prod
 
   media:
     provider: cloudinary # cloudinary | s3
