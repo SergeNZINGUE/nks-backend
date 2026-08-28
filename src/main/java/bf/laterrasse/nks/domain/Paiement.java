@@ -56,4 +56,14 @@ public class Paiement {
     @Column(nullable = false)
     @Builder.Default
     private boolean manuel = false;
+
+    @Column(name = "nb_tentatives_polling", nullable = false)
+    @Builder.Default
+    private int nbTentativesPolling = 0;
+
+    @Column(name = "derniere_tentative_polling")
+    private Instant derniereTentativePolling;
+
+    @Column(name = "date_expiration")
+    private Instant dateExpiration;
 }

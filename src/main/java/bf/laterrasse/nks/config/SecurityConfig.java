@@ -45,7 +45,8 @@ public class SecurityConfig {
             "/candidats/**", "/videos/candidat/**", "/medias/candidat/**", "/editions/**", "/soirees/**",
             "/partenaires/**", "/classement/**", "/resultats/**", "/votes/candidat/**",
             "/duos/phase/**", "/poules/*/candidats", "/docs/**", "/api-docs/**",
-            "/swagger-ui/**", "/swagger-ui.html", "/actuator/health"
+            "/swagger-ui/**", "/swagger-ui.html", "/actuator/health",
+            "/paiements/*/statut-public"
     };
 
     private static final String[] PUBLIC_ALL_METHODS_ENDPOINTS = {

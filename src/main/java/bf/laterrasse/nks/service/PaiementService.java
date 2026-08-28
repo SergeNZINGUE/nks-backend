@@ -1,6 +1,7 @@
 package bf.laterrasse.nks.service;
 
 import bf.laterrasse.nks.config.PaymentProperties;
+import bf.laterrasse.nks.domain.LigdiCashCallback;
 import bf.laterrasse.nks.domain.Paiement;
 import bf.laterrasse.nks.domain.TransactionMobileMoney;
 import bf.laterrasse.nks.domain.Utilisateur;
@@ -10,35 +11,48 @@ import bf.laterrasse.nks.domain.enums.Enums.TypePaiement;
 import bf.laterrasse.nks.dto.paiement.InitierPaiementRequest;
 import bf.laterrasse.nks.dto.paiement.InitierPaiementResponse;
 import bf.laterrasse.nks.event.PaiementConfirmeEvent;
+import bf.laterrasse.nks.event.PaiementEchoueEvent;
+import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.exception.ValidationMetierException;
 import bf.laterrasse.nks.gateway.payment.ConfirmationPaiement;
 import bf.laterrasse.nks.gateway.payment.InitiationPaiement;
 import bf.laterrasse.nks.gateway.payment.PaymentGateway;
+import bf.laterrasse.nks.repository.LigdiCashCallbackRepository;
 import bf.laterrasse.nks.repository.PaiementRepository;
 import bf.laterrasse.nks.repository.TransactionMobileMoneyRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
  * WF-03/WF-04/WF-10 : initiation et confirmation webhook des paiements Mobile Money.
- * L'idempotence est garantie par la contrainte UNIQUE sur paiements.idempotency_key
- * (§10.6) et par la déduplication des références opérateur en base
- * (transactions_mobile_money.reference_operateur, §14.7).
+ *
+ * Protocole LigdiCash (source de vérité = confirmInvoice) :
+ *  1. createInvoice → PENDING en base + token stocké dans referenceExterne
+ *  2. Callback reçu → extraire token, déduplication atomique (ligdicash_callbacks),
+ *     appeler confirmInvoice, agir sur la réponse — jamais sur le contenu du callback lui-même
+ *  3. Polling de secours (PaiementPollingJob) → si PENDING > 2 min sans callback
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class PaiementService {
 
+    private static final int MAX_TENTATIVES_POLLING = 10;
+
+    @Value("${nks.frontend-base-url}")
+    private String frontendBaseUrl;
+
     private final PaiementRepository paiementRepository;
     private final TransactionMobileMoneyRepository transactionRepository;
+    private final LigdiCashCallbackRepository callbackRepository;
     private final PaymentGateway paymentGateway;
     private final PaymentProperties paymentProperties;
     private final ApplicationEventPublisher eventPublisher;
@@ -51,13 +65,12 @@ public class PaiementService {
     }
 
     /**
-     * Crée le Paiement (PENDING) et démarre la transaction côté gateway. Utilisé directement
-     * par les autres modules (VoteService, BilletterieService) qui doivent conserver la
-     * référence au Paiement pour lier leurs propres entités (VotePayant, Reservation) avant
-     * même la confirmation — cf. §10.6/10.7.
+     * Crée le Paiement (PENDING) et démarre la transaction côté gateway.
+     * Le token LigdiCash est stocké dans referenceExterne pour les appels confirm ultérieurs.
      */
     @Transactional
-    public PaiementInitie creerEtDemarrer(TypePaiement type, java.math.BigDecimal montant, String telephone, Utilisateur utilisateurOuNull) {
+    public PaiementInitie creerEtDemarrer(TypePaiement type, java.math.BigDecimal montant,
+                                           String telephone, Utilisateur utilisateurOuNull) {
         Paiement paiement = Paiement.builder()
                 .utilisateur(utilisateurOuNull)
                 .typePaiement(type)
@@ -67,89 +80,126 @@ public class PaiementService {
                 .build();
         paiement = paiementRepository.save(paiement);
 
-        String callbackUrl = paymentProperties.getLigdicash().getCallbackBaseUrl() + "/webhooks/ligdicash";
-        InitiationPaiement initiation = paymentGateway.initierPaiement(
-                montant, telephone, paiement.getIdempotencyKey().toString(), callbackUrl);
+        String notifyUrl = paymentProperties.getLigdicash().getCallbackBaseUrl() + "/webhooks/ligdicash";
+        String returnUrl = frontendBaseUrl + "/paiement/retour?paiementId=" + paiement.getId();
+        String cancelUrl = frontendBaseUrl + "/paiement/retour?paiementId=" + paiement.getId() + "&annule=true";
 
+        InitiationPaiement initiation = paymentGateway.initierPaiement(
+                montant, telephone, paiement.getIdempotencyKey().toString(),
+                notifyUrl, returnUrl, cancelUrl);
+
+        // referenceExterne = token LigdiCash, utilisé pour tous les appels confirm suivants
         paiement.setReferenceExterne(initiation.referenceOperateur());
         paiement = paiementRepository.save(paiement);
         return new PaiementInitie(paiement, initiation.urlPaiement());
     }
 
     /**
-     * Point d'entrée du webhook LigdiCash (§13.7). Doit rester rapide : la logique métier
-     * déclenchée (activation profil, crédit de votes, confirmation billet) est déléguée
-     * aux listeners de {@link PaiementConfirmeEvent} plutôt que traitée ici.
+     * Point d'entrée du webhook LigdiCash (§13.7).
+     * LigdiCash envoie 2 POST par événement — la déduplication atomique via
+     * ligdicash_callbacks garantit un traitement unique. On ne se fie jamais au contenu
+     * du callback : on appelle confirmInvoice pour obtenir le statut réel.
      */
     @Transactional
-    public void traiterWebhook(String payload, String signature) {
-        if (!paymentGateway.verifierWebhook(payload, signature)) {
-            log.warn("Webhook LigdiCash rejeté : signature invalide");
-            throw new ValidationMetierException("Signature webhook invalide");
-        }
-
-        ConfirmationPaiement confirmation = paymentGateway.traiterConfirmation(payload);
-        if (confirmation.idempotencyKey() == null) {
-            log.warn("Webhook LigdiCash sans client_reference exploitable — payload ignoré");
+    public void traiterWebhook(String payload) {
+        String token = paymentGateway.extraireTokenWebhook(payload);
+        if (token == null) {
+            log.warn("Webhook LigdiCash : token introuvable — payload ignoré");
             return;
         }
 
-        Paiement paiement = paiementRepository.findByIdempotencyKey(UUID.fromString(confirmation.idempotencyKey()))
-                .orElse(null);
+        // Déduplication atomique — si INSERT échoue (contrainte UNIQUE), callback déjà traité
+        try {
+            callbackRepository.saveAndFlush(new LigdiCashCallback(token));
+        } catch (DataIntegrityViolationException e) {
+            log.info("Callback LigdiCash dupliqué pour token={} — ignoré (idempotence)", token);
+            return;
+        }
+
+        traiterConfirmationToken(token, payload);
+    }
+
+    /** Appelé par le polling de secours (PaiementPollingJob) pour les PENDING bloqués. */
+    @Transactional
+    public void interrogerStatutParPolling(UUID paiementId) {
+        Paiement paiement = paiementRepository.findById(paiementId).orElse(null);
+        if (paiement == null || paiement.getStatut() != StatutPaiement.PENDING) return;
+
+        String token = paiement.getReferenceExterne();
+        if (token == null) {
+            log.warn("Polling paiement {} sans token LigdiCash — ignoré", paiementId);
+            return;
+        }
+
+        paiement.setNbTentativesPolling(paiement.getNbTentativesPolling() + 1);
+        paiement.setDerniereTentativePolling(Instant.now());
+
+        if (paiement.getNbTentativesPolling() >= MAX_TENTATIVES_POLLING) {
+            paiement.setStatut(StatutPaiement.EXPIRED);
+            paiementRepository.save(paiement);
+            log.warn("Paiement {} expiré après {} tentatives de polling sans confirmation", paiementId, MAX_TENTATIVES_POLLING);
+            eventPublisher.publishEvent(new PaiementEchoueEvent(paiement.getId(), paiement.getTypePaiement()));
+            return;
+        }
+
+        paiementRepository.save(paiement);
+        traiterConfirmationToken(token, null);
+    }
+
+    private void traiterConfirmationToken(String token, String payloadBrut) {
+        Paiement paiement = paiementRepository.findByReferenceExterne(token).orElse(null);
         if (paiement == null) {
-            log.warn("Webhook LigdiCash : aucun paiement pour idempotency_key={}", confirmation.idempotencyKey());
+            log.warn("LigdiCash : aucun paiement pour token={}", token);
             return;
         }
 
         if (paiement.getStatut() == StatutPaiement.COMPLETED) {
-            log.info("Webhook LigdiCash dupliqué pour paiement {} — ignoré (idempotence)", paiement.getId());
-            return; // déjà traité, on répond 200 sans rien refaire (§14.7)
-        }
-
-        // Déduplication par référence opérateur (contrainte UNIQUE operateur+reference_operateur)
-        Optional<TransactionMobileMoney> dejaTraitee = confirmation.referenceOperateur() == null ? Optional.empty()
-                : transactionRepository.findByOperateurAndReferenceOperateur(
-                        OperateurMobileMoney.LIGDICASH, confirmation.referenceOperateur());
-        if (dejaTraitee.isPresent()) {
-            log.info("Transaction LigdiCash {} déjà enregistrée — ignorée", confirmation.referenceOperateur());
+            log.info("Paiement {} déjà COMPLETED — ignoré (idempotence)", paiement.getId());
             return;
         }
+
+        // Source de vérité : appeler confirmInvoice
+        ConfirmationPaiement confirmation = paymentGateway.confirmerPaiement(token);
 
         TransactionMobileMoney transaction = TransactionMobileMoney.builder()
                 .paiement(paiement)
                 .operateur(OperateurMobileMoney.LIGDICASH)
-                .referenceOperateur(confirmation.referenceOperateur() != null
-                        ? confirmation.referenceOperateur() : "UNKNOWN-" + UUID.randomUUID())
+                .referenceOperateur(token)
+                .tokenCreation(token)
                 .montant(confirmation.montant() != null ? confirmation.montant() : paiement.getMontant())
                 .telephonePayeur(confirmation.telephonePayeur())
                 .statutOperateur(confirmation.statutOperateur())
-                .webhookPayload(payload)
-                .signatureWebhook(signature)
+                .codeReponse(confirmation.codeReponse())
+                .motifRejet(confirmation.motifRejet())
+                .webhookPayload(payloadBrut)
                 .dateWebhook(Instant.now())
                 .build();
         transactionRepository.save(transaction);
 
-        paiement.setStatut(confirmation.succes() ? StatutPaiement.COMPLETED : StatutPaiement.FAILED);
-        paiement.setDateFinalisation(Instant.now());
-        paiementRepository.save(paiement);
-
         if (confirmation.succes()) {
+            paiement.setStatut(StatutPaiement.COMPLETED);
+            paiement.setDateFinalisation(Instant.now());
+            paiementRepository.save(paiement);
             eventPublisher.publishEvent(new PaiementConfirmeEvent(
                     paiement.getId(), paiement.getTypePaiement(),
                     paiement.getUtilisateur() != null ? paiement.getUtilisateur().getId() : null,
-                    paiement.getMontant(), confirmation.referenceOperateur()));
-        } else {
-            log.info("Paiement {} échoué côté opérateur (statut={})", paiement.getId(), confirmation.statutOperateur());
-            // La relance automatique (RM-14) est gérée par NotificationRetryJob / logique candidat (US-09)
-            eventPublisher.publishEvent(new bf.laterrasse.nks.event.PaiementEchoueEvent(paiement.getId(), paiement.getTypePaiement()));
+                    paiement.getMontant(), token));
+        } else if ("notcompleted".equalsIgnoreCase(confirmation.statutOperateur())) {
+            paiement.setStatut(StatutPaiement.FAILED);
+            paiement.setDateFinalisation(Instant.now());
+            paiementRepository.save(paiement);
+            log.info("Paiement {} échoué — code={} motif={}", paiement.getId(),
+                    confirmation.codeReponse(), confirmation.motifRejet());
+            eventPublisher.publishEvent(new PaiementEchoueEvent(paiement.getId(), paiement.getTypePaiement()));
         }
+        // Si statut = "pending" → on ne fait rien, le polling reprendra
     }
 
     @Transactional
     @bf.laterrasse.nks.aop.Auditable(action = "PAIEMENT_CONFIRME_MANUELLEMENT", entite = "Paiement")
     public Paiement confirmerManuellement(UUID paiementId, String referenceManuelle) {
         Paiement paiement = paiementRepository.findById(paiementId)
-                .orElseThrow(() -> new bf.laterrasse.nks.exception.ResourceNotFoundException("Paiement introuvable"));
+                .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable"));
         paiement.setStatut(StatutPaiement.COMPLETED);
         paiement.setManuel(true);
         paiement.setReferenceExterne(referenceManuelle);

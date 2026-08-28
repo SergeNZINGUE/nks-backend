@@ -5,7 +5,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -18,9 +17,8 @@ public class WebhookController {
     private final PaiementService paiementService;
 
     @PostMapping("/ligdicash")
-    public ResponseEntity<Void> ligdicash(@RequestBody String payload,
-                                           @RequestHeader(value = "X-LigdiCash-Signature", required = false) String signature) {
-        paiementService.traiterWebhook(payload, signature);
+    public ResponseEntity<Void> ligdicash(@RequestBody String payload) {
+        paiementService.traiterWebhook(payload);
         return ResponseEntity.ok().build();
     }
 }

@@ -3,6 +3,7 @@ package bf.laterrasse.nks.controller;
 import bf.laterrasse.nks.dto.paiement.InitierPaiementRequest;
 import bf.laterrasse.nks.dto.paiement.InitierPaiementResponse;
 import bf.laterrasse.nks.dto.paiement.PaiementResponse;
+import bf.laterrasse.nks.dto.paiement.StatutPublicPaiementResponse;
 import bf.laterrasse.nks.exception.AccesRefuseException;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.repository.PaiementRepository;
@@ -64,6 +65,15 @@ public class PaiementController {
     public ResponseEntity<Page<PaiementResponse>> lister(Pageable pageable) {
         Page<PaiementResponse> result = paiementRepository.findAll(pageable).map(PaiementResponse::from);
         return ResponseEntity.ok(result);
+    }
+
+    /** Endpoint public (sans auth) — utilisé par le frontend pour afficher le résultat du paiement. */
+    @GetMapping("/{id}/statut-public")
+    @Transactional(readOnly = true)
+    public ResponseEntity<StatutPublicPaiementResponse> statutPublic(@PathVariable UUID id) {
+        var paiement = paiementRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable"));
+        return ResponseEntity.ok(StatutPublicPaiementResponse.from(paiement, null));
     }
 
     @PutMapping("/{id}/confirmer-manuellement")

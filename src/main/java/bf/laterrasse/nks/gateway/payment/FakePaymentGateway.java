@@ -16,18 +16,22 @@ import java.util.UUID;
 public class FakePaymentGateway implements PaymentGateway {
 
     @Override
-    public InitiationPaiement initierPaiement(BigDecimal montant, String telephone, String idempotencyKey, String callbackUrl) {
-        return new InitiationPaiement("https://fake-payment.local/pay/" + idempotencyKey, "FAKE-" + UUID.randomUUID());
+    public InitiationPaiement initierPaiement(BigDecimal montant, String telephone,
+                                               String idempotencyKey, String notifyUrl,
+                                               String returnUrl, String cancelUrl) {
+        return new InitiationPaiement("https://fake-payment.local/pay/" + idempotencyKey,
+                "FAKE-" + UUID.randomUUID());
     }
 
     @Override
-    public boolean verifierWebhook(String payload, String signature) {
-        return true;
+    public ConfirmationPaiement confirmerPaiement(String token) {
+        return new ConfirmationPaiement(true, null, token, "completed",
+                BigDecimal.ZERO, "+22600000000", null, "00", null);
     }
 
     @Override
-    public ConfirmationPaiement traiterConfirmation(String payload) {
-        return new ConfirmationPaiement(true, payload, "FAKE-REF", "COMPLETED", BigDecimal.ZERO, "+22600000000", payload);
+    public String extraireTokenWebhook(String payload) {
+        return payload != null && !payload.isBlank() ? payload.trim() : null;
     }
 
     @Override

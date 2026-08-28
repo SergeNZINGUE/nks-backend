@@ -48,10 +48,20 @@ public class TransactionMobileMoney {
     @Column(name = "statut_operateur", length = 50)
     private String statutOperateur;
 
+    @Column(name = "token_creation", length = 255)
+    private String tokenCreation;
+
+    @Column(name = "code_reponse", length = 20)
+    private String codeReponse;
+
+    @Column(name = "motif_rejet", columnDefinition = "text")
+    private String motifRejet;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "webhook_payload", columnDefinition = "jsonb")
     private String webhookPayload;
 
+    /** Déprécié — LigdiCash ne signe pas ses webhooks. Conservé pour compatibilité schéma. */
     @Column(name = "signature_webhook", length = 255)
     private String signatureWebhook;
 

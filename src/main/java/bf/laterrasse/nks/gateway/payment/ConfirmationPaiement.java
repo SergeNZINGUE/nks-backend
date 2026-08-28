@@ -9,6 +9,8 @@ public record ConfirmationPaiement(
         String statutOperateur,
         BigDecimal montant,
         String telephonePayeur,
-        String rawPayload
+        String rawPayload,
+        String codeReponse,
+        String motifRejet
 ) {
 }
