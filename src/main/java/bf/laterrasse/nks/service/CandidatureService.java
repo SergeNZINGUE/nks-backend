@@ -40,6 +40,8 @@ public class CandidatureService {
     private static final int AGE_MINIMUM = 18;
     private static final SecureRandom RANDOM = new SecureRandom();
 
+    public static final String SMS_CANDIDATURE_VALIDEE =
+            "NKS :Felicitations candidature acceptee ! Reglez vos frais d'inscription sur votre espace https://laterrasse.bf/login ou via OM: +22606071717. BIENVENUE DANS LA COMPETITION!";
     @Value("${nks.frontend-base-url}")
     private String frontendBaseUrl;
 
@@ -168,14 +170,14 @@ public class CandidatureService {
             Utilisateur candidat = candidature.getCandidat().getUtilisateur();
 
             String contenu = "<p style=\"margin:0;\">Félicitations, votre candidature a été acceptée. Connectez-vous à votre"
-                    + " espace pour procéder au paiement des frais d'inscription et activer votre profil. Ou réglez par Orange Monnaie sur le numero : 06071717</p>";
+                    + " espace pour procéder au paiement des frais d'inscription et activer votre profil. Ou réglez par Orange Money sur le numero : 06071717</p>";
 
             String emailCorps = notificationService.construireEmailHtml(candidat.getPrenom(), "Candidature acceptée", contenu,
                     "Payer mes frais d'inscription", frontendBaseUrl + "/login");
 
             notificationService.envoyerSmsEtEmail(candidat, candidat.getTelephone(), candidat.getEmail(),
                     TypeNotification.CANDIDATURE_VALIDEE,
-                    "NKS : candidature acceptee ! Connectez-vous pour regler vos frais d'inscription. https://laterrasse.bf ou via OM: 06071717",
+                    SMS_CANDIDATURE_VALIDEE,
                     "NKS — Candidature acceptée", emailCorps);
 
         } catch (Exception e) {

@@ -80,13 +80,17 @@ nks:
       api-secret: ${LIGDICASH_API_SECRET:}
       webhook-secret: ${LIGDICASH_WEBHOOK_SECRET:}
       callback-base-url: ${LIGDICASH_CALLBACK_BASE_URL:http://localhost:8080/api/v1}
-
   sms:
-    provider: africastalking # africastalking | twilio
+    provider: hdrstream  # hdrstream (actuel) | africastalking (dès activation du compte)
+    # Proxy HDR Stream — expéditeur alphanumérique "NKS 2026" (si provider=hdrstream)
+    # Si proxy-url est vide → mode simulation (aucun SMS envoyé)
+    proxy-url: ${NKS_SMS_PROXY_URL:}
+    proxy-api-key: ${NKS_SMS_PROXY_API_KEY:}
+    # Africa's Talking — à activer dès réception des credentials (si provider=africastalking)
     africastalking:
       username: ${AT_USERNAME:}
       api-key: ${AT_API_KEY:}
-      sender-id: ${AT_SENDER_ID:}
+      sender-id: ${AT_SENDER_ID:NKS 2026}
 
   votes:
     # Anti-fraude — seuil configurable, valeur par défaut décidée avec le client (20 votes payants / heure / numéro)

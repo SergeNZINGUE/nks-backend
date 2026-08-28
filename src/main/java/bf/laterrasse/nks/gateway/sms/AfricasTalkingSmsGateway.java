@@ -2,12 +2,14 @@ package bf.laterrasse.nks.gateway.sms;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.client.WebClient;
 
 @Component
+@ConditionalOnProperty(prefix = "nks.sms", name = "provider", havingValue = "africastalking")
 @Slf4j
 public class AfricasTalkingSmsGateway implements SmsGateway {
 
@@ -17,9 +19,9 @@ public class AfricasTalkingSmsGateway implements SmsGateway {
     private final String senderId;
 
     public AfricasTalkingSmsGateway(
-            @Value("${nks.sms.africastalking.username}") String username,
-            @Value("${nks.sms.africastalking.api-key}") String apiKey,
-            @Value("${nks.sms.africastalking.sender-id}") String senderId) {
+            @Value("${nks.sms.africastalking.username:}") String username,
+            @Value("${nks.sms.africastalking.api-key:}") String apiKey,
+            @Value("${nks.sms.africastalking.sender-id:NKS 2026}") String senderId) {
         this.username = username;
         this.apiKey = apiKey;
         this.senderId = senderId;
@@ -33,7 +35,7 @@ public class AfricasTalkingSmsGateway implements SmsGateway {
     @Override
     public String envoyer(String telephone, String message) {
         if (apiKey == null || apiKey.isBlank()) {
-            log.warn("AT_API_KEY non configuré — SMS non envoyé (simulation) vers {} : {}", telephone, message);
+            log.warn("AT_API_KEY non configuré — SMS simulé (Africa's Talking) vers {} : {}", telephone, message);
             return "SIMULATED-" + System.currentTimeMillis();
         }
 
@@ -53,10 +55,10 @@ public class AfricasTalkingSmsGateway implements SmsGateway {
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
-            log.info("SMS envoyé vers {} — réponse Africa's Talking : {}", telephone, response);
+            log.info("SMS envoyé vers {} — Africa's Talking : {}", telephone, response);
             return response;
         } catch (Exception e) {
-            log.error("Échec envoi SMS vers {} : {}", telephone, e.getMessage());
+            log.error("Échec envoi SMS (Africa's Talking) vers {} : {}", telephone, e.getMessage());
             throw e;
         }
     }

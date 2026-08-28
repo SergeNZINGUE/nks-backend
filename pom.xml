@@ -148,6 +148,8 @@
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
+
+
     </dependencies>
 
     <dependencyManagement>
