@@ -41,7 +41,7 @@ public class CandidatureService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     public static final String SMS_CANDIDATURE_VALIDEE =
-            "NKS :Felicitations candidature acceptee ! Reglez vos frais d'inscription sur votre espace https://laterrasse.bf/login ou via OM: +22606071717. BIENVENUE DANS LA COMPETITION!";
+            "Felicitations candidature acceptee! Reglez vos frais d'inscription 15000 FCFA https://laterrasse.bf/login ou via OM:+22606071717.BIENVENUE DANS LA COMPETITION!";
     @Value("${nks.frontend-base-url}")
     private String frontendBaseUrl;
 
@@ -173,7 +173,7 @@ public class CandidatureService {
                     + " espace pour procéder au paiement des frais d'inscription et activer votre profil. Ou réglez par Orange Money sur le numero : 06071717</p>";
 
             String emailCorps = notificationService.construireEmailHtml(candidat.getPrenom(), "Candidature acceptée", contenu,
-                    "Payer mes frais d'inscription", frontendBaseUrl + "/login");
+                    "Payer mes frais d'inscription (15000 FCFA)", frontendBaseUrl + "/login");
 
             notificationService.envoyerSmsEtEmail(candidat, candidat.getTelephone(), candidat.getEmail(),
                     TypeNotification.CANDIDATURE_VALIDEE,

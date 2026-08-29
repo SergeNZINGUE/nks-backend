@@ -10,3 +10,7 @@ target/
 HELP.md
 .claude/
 keys/
+
+Requete NKS.txt
+target-old/
+src/test/java/bf/laterrasse/nks/gateway/media/
