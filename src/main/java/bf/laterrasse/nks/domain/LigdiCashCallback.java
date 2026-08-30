@@ -21,7 +21,7 @@ public class LigdiCashCallback {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 255)
+    @Column(nullable = false, length = 500)
     private String token;
 
     @Column(name = "recu_le", nullable = false)

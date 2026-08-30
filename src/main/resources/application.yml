@@ -83,9 +83,10 @@ nks:
   sms:
     provider: hdrstream  # hdrstream (actuel) | africastalking (dès activation du compte)
     # Proxy HDR Stream — expéditeur alphanumérique "NKS 2026" (si provider=hdrstream)
-    # Si proxy-url est vide → mode simulation (aucun SMS envoyé)
-    proxy-url: ${NKS_SMS_PROXY_URL:}
-    proxy-api-key: ${NKS_SMS_PROXY_API_KEY:}
+    proxy-url: ${NKS_SMS_URL:${NKS_SMS_PROXY_URL:https://panel.hdrstream.com/api/nks/sms}}
+    proxy-api-key: ${NKS_PROXY_API_KEY:${NKS_SMS_PROXY_API_KEY:}}
+    whatsapp-url: ${NKS_WHATSAPP_URL:https://panel.hdrstream.com/api/nks/whatsapp}
+    history-url: ${NKS_HISTORY_URL:https://panel.hdrstream.com/api/nks/sms/history}
     # Africa's Talking — à activer dès réception des credentials (si provider=africastalking)
     africastalking:
       username: ${AT_USERNAME:}

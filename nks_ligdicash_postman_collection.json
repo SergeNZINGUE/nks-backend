@@ -1,0 +1,394 @@
+{
+	"info": {
+		"_postman_id": "8a32a688-9bb3-4d43-9823-ligdicash-nks",
+		"name": "NKS - LigdiCash & Paiement API",
+		"description": "Collection de test pour l'API LigdiCash en direct et via le Backend NKS",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. LigdiCash API Direct",
+			"item": [
+				{
+					"name": "1.1 Créer une facture (createInvoice)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.token) {",
+									"    pm.collectionVariables.set(\"ligdicash_token\", jsonData.token);",
+									"    console.log(\"Token sauvegardé : \" + jsonData.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Apikey",
+								"value": "{{LIGDICASH_API_KEY}}",
+								"type": "text"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{LIGDICASH_API_SECRET}}",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"commande\": {\n    \"invoice\": {\n      \"items\": [\n        {\n          \"name\": \"Billet NKS 2026 - Soirée Finale\",\n          \"description\": \"Entrée Standard\",\n          \"quantity\": 1,\n          \"unit_price\": 1000,\n          \"total_price\": 1000\n        }\n      ],\n      \"total_amount\": 1000,\n      \"devise\": \"XOF\",\n      \"description\": \"NKS - Night Karaoke Stars\",\n      \"customer\": \"+22670000000\",\n      \"customer_firstname\": \"Client\",\n      \"customer_lastname\": \"NKS\",\n      \"customer_email\": \"client@nks.bf\"\n    },\n    \"store\": {\n      \"name\": \"Night Karaoke Stars\",\n      \"website_url\": \"https://nks.bf\"\n    },\n    \"actions\": {\n      \"cancel_url\": \"http://localhost:4200/paiement/annule\",\n      \"return_url\": \"http://localhost:4200/paiement/retour\",\n      \"callback_url\": \"http://localhost:8082/api/v1/webhooks/ligdicash\"\n    },\n    \"custom_data\": {\n      \"external_id\": \"nks-test-postman-001\"\n    }\n  }\n}"
+						},
+						"url": {
+							"raw": "https://app.ligdicash.com/pay/v01/redirect/checkout-invoice/create",
+							"protocol": "https",
+							"host": [
+								"app",
+								"ligdicash",
+								"com"
+							],
+							"path": [
+								"pay",
+								"v01",
+								"redirect",
+								"checkout-invoice",
+								"create"
+							]
+						}
+					}
+				},
+				{
+					"name": "1.2 Vérifier le statut de la facture (confirmInvoice)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Apikey",
+								"value": "{{LIGDICASH_API_KEY}}",
+								"type": "text"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{LIGDICASH_API_SECRET}}",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "https://app.ligdicash.com/pay/v01/redirect/checkout-invoice/confirm/?invoiceToken={{ligdicash_token}}",
+							"protocol": "https",
+							"host": [
+								"app",
+								"ligdicash",
+								"com"
+							],
+							"path": [
+								"pay",
+								"v01",
+								"redirect",
+								"checkout-invoice",
+								"confirm",
+								""
+							],
+							"query": [
+								{
+									"key": "invoiceToken",
+									"value": "{{ligdicash_token}}"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "2. NKS Backend API",
+			"item": [
+				{
+					"name": "2.1 Connexion Admin (Login)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.accessToken) {",
+									"    pm.collectionVariables.set(\"jwt_token\", jsonData.accessToken);",
+									"    console.log(\"JWT stocké\");",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"identifiant\": \"hdrstream@gmail.com\",\n  \"motDePasse\": \"Admin2025!\"\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8082/api/v1/auth/connexion",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8082",
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"connexion"
+							]
+						}
+					}
+				},
+				{
+					"name": "2.2 Initier un paiement (Backend)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"typePaiement\": \"VOTE\",\n  \"montant\": 500,\n  \"telephone\": \"+22670000000\"\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8082/api/v1/paiements/initier",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8082",
+							"path": [
+								"api",
+								"v1",
+								"paiements",
+								"initier"
+							]
+						}
+					}
+				},
+				{
+					"name": "2.3 Simuler Webhook LigdiCash",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{ligdicash_token}}\",\n  \"status\": \"completed\",\n  \"amount\": 1000,\n  \"operator_name\": \"Orange Money\",\n  \"customer_phone_number\": \"+22670000000\"\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8082/api/v1/webhooks/ligdicash",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8082",
+							"path": [
+								"api",
+								"v1",
+								"webhooks",
+								"ligdicash"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "3. HDR Stream Proxy (SMS & WhatsApp)",
+			"item": [
+				{
+					"name": "3.1 Envoyer un SMS (Direct Proxy)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-NKS-API-Key",
+								"value": "{{NKS_PROXY_API_KEY}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"to\": \"+22676424845\",\n  \"message\": \"Test NKS 2026 via HDR Stream\"\n}"
+						},
+						"url": {
+							"raw": "{{NKS_SMS_URL}}",
+							"host": [
+								"{{NKS_SMS_URL}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "3.2 Historique des SMS (Statuts & Coûts)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-NKS-API-Key",
+								"value": "{{NKS_PROXY_API_KEY}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{NKS_HISTORY_URL}}?page=1",
+							"host": [
+								"{{NKS_HISTORY_URL}}"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "3.3 Envoyer WhatsApp (En attente template Meta)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-NKS-API-Key",
+								"value": "{{NKS_PROXY_API_KEY}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"to\": \"+22676424845\"\n}"
+						},
+						"url": {
+							"raw": "{{NKS_WHATSAPP_URL}}",
+							"host": [
+								"{{NKS_WHATSAPP_URL}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "3.4 Envoyer SMS (Via Backend NKS)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"to\": \"+22676424845\",\n  \"message\": \"Votre code NKS est 482913\"\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8082/api/v1/sms/envoyer",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8082",
+							"path": [
+								"api",
+								"v1",
+								"sms",
+								"envoyer"
+							]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "LIGDICASH_API_KEY",
+			"value": "OVWPO5HLXR2TLZPSY"
+		},
+		{
+			"key": "LIGDICASH_API_SECRET",
+			"value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZF9hcHAiOiIzNTU0MiIsImlkX2Fib25uZSI6MTI0ODE1MiwiZGF0ZWNyZWF0aW9uX2FwcCI6IjIwMjYtMDgtMjUgMTg6NDE6MDcifQ.e9HfVjtAdMjyLyZz5PqUkcEzqUu-ljZYwG6NyJyvMb8"
+		},
+		{
+			"key": "NKS_PROXY_API_KEY",
+			"value": "ff6fef18-01cd-48a4-be8d-1ef266c04b67"
+		},
+		{
+			"key": "NKS_SMS_URL",
+			"value": "https://panel.hdrstream.com/api/nks/sms"
+		},
+		{
+			"key": "NKS_WHATSAPP_URL",
+			"value": "https://panel.hdrstream.com/api/nks/whatsapp"
+		},
+		{
+			"key": "NKS_HISTORY_URL",
+			"value": "https://panel.hdrstream.com/api/nks/sms/history"
+		},
+		{
+			"key": "ligdicash_token",
+			"value": ""
+		},
+		{
+			"key": "jwt_token",
+			"value": ""
+		}
+	]
+}

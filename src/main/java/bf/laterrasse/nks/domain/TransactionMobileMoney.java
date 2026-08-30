@@ -32,7 +32,7 @@ public class TransactionMobileMoney {
     @Column(nullable = false, length = 20)
     private OperateurMobileMoney operateur;
 
-    @Column(name = "reference_operateur", nullable = false, length = 150)
+    @Column(name = "reference_operateur", nullable = false, length = 500)
     private String referenceOperateur;
 
     @Column(nullable = false)
@@ -48,7 +48,7 @@ public class TransactionMobileMoney {
     @Column(name = "statut_operateur", length = 50)
     private String statutOperateur;
 
-    @Column(name = "token_creation", length = 255)
+    @Column(name = "token_creation", length = 500)
     private String tokenCreation;
 
     @Column(name = "code_reponse", length = 20)

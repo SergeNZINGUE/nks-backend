@@ -51,7 +51,7 @@ public class HdrStreamSmsGateway implements SmsGateway {
                 String erreur = response != null ? response.path("error").asText("unknown") : "null response";
                 String detail = response != null ? response.path("detail").asText("") : "";
                 log.error("HDR Stream SMS échoué vers {} — error={} detail={}", telephone, erreur, detail);
-                throw new RuntimeException("Envoi SMS échoué : " + erreur + " — " + detail);
+                throw new RuntimeException("Envoi SMS échoué : " + erreur + (detail.isBlank() ? "" : " — " + detail));
             }
 
             String sid = response.path("sid").asText(null);
@@ -59,8 +59,9 @@ public class HdrStreamSmsGateway implements SmsGateway {
             return sid;
 
         } catch (WebClientResponseException e) {
-            log.error("HDR Stream HTTP {} pour {} — {}", e.getStatusCode(), telephone, e.getResponseBodyAsString());
-            throw new RuntimeException("Erreur HTTP HDR Stream " + e.getStatusCode(), e);
+            String responseBody = e.getResponseBodyAsString();
+            log.error("HDR Stream HTTP {} pour {} — {}", e.getStatusCode(), telephone, responseBody);
+            throw new RuntimeException("Erreur HTTP HDR Stream " + e.getStatusCode() + " : " + responseBody, e);
         }
     }
 }

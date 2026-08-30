@@ -108,12 +108,19 @@ public class PaiementService {
             return;
         }
 
-        // Déduplication atomique — si INSERT échoue (contrainte UNIQUE), callback déjà traité
-        try {
-            callbackRepository.saveAndFlush(new LigdiCashCallback(token));
-        } catch (DataIntegrityViolationException e) {
-            log.info("Callback LigdiCash dupliqué pour token={} — ignoré (idempotence)", token);
+        Paiement paiement = paiementRepository.findByReferenceExterne(token).orElse(null);
+        if (paiement == null) {
+            log.warn("LigdiCash webhook : aucun paiement trouvé pour token={}", token);
             return;
+        }
+
+        if (paiement.getStatut() == StatutPaiement.COMPLETED) {
+            log.info("Paiement {} déjà COMPLETED — ignoré (idempotence)", paiement.getId());
+            return;
+        }
+
+        if (!callbackRepository.existsByToken(token)) {
+            callbackRepository.save(new LigdiCashCallback(token));
         }
 
         traiterConfirmationToken(token, payload);
@@ -191,8 +198,10 @@ public class PaiementService {
             log.info("Paiement {} échoué — code={} motif={}", paiement.getId(),
                     confirmation.codeReponse(), confirmation.motifRejet());
             eventPublisher.publishEvent(new PaiementEchoueEvent(paiement.getId(), paiement.getTypePaiement()));
+        } else if ("pending".equalsIgnoreCase(confirmation.statutOperateur())) {
+            log.info("Paiement {} toujours PENDING côté LigdiCash (code={}) — en attente de finalisation par le client",
+                    paiement.getId(), confirmation.codeReponse());
         }
-        // Si statut = "pending" → on ne fait rien, le polling reprendra
     }
 
     @Transactional

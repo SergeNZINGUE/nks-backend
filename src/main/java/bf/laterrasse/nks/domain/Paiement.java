@@ -50,7 +50,7 @@ public class Paiement {
     @Column(name = "date_finalisation")
     private Instant dateFinalisation;
 
-    @Column(name = "reference_externe", length = 150)
+    @Column(name = "reference_externe", length = 500)
     private String referenceExterne;
 
     @Column(nullable = false)

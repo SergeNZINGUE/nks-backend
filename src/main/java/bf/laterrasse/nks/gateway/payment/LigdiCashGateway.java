@@ -51,10 +51,15 @@ public class LigdiCashGateway implements PaymentGateway {
 
     private WebClient client() {
         PaymentProperties.LigdiCash cfg = paymentProperties.getLigdicash();
+        String authToken = (cfg.getApiSecret() != null && !cfg.getApiSecret().isBlank())
+                ? cfg.getApiSecret()
+                : cfg.getApiKey();
+
         return WebClient.builder()
                 .baseUrl(cfg.getBaseUrl())
-                .defaultHeader("Authorization", "Token " + cfg.getApiKey())
+                .defaultHeader("Authorization", "Bearer " + authToken)
                 .defaultHeader("Apikey", cfg.getApiKey())
+                .defaultHeader("Accept", "application/json")
                 .defaultHeader("Content-Type", "application/json")
                 .build();
     }
@@ -63,22 +68,42 @@ public class LigdiCashGateway implements PaymentGateway {
     public InitiationPaiement initierPaiement(BigDecimal montant, String telephone,
                                                String idempotencyKey, String notifyUrl,
                                                String returnUrl, String cancelUrl) {
-        PaymentProperties.LigdiCash cfg = paymentProperties.getLigdicash();
+        Map<String, Object> item = new HashMap<>();
+        item.put("name", "NKS - Night Karaoke Stars");
+        item.put("description", "Paiement NKS");
+        item.put("quantity", 1);
+        item.put("unit_price", montant.intValue());
+        item.put("total_price", montant.intValue());
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("apikey", cfg.getApiKey());
-        body.put("currency", "XOF");
-        body.put("amount", montant.intValue());
-        body.put("description", "NKS - Night Karaoke Stars");
-        body.put("customer_firstname", "Client");
-        body.put("customer_lastname", "NKS");
-        body.put("customer_email", "noreply@nks.bf");
-        body.put("customer_phone_number", telephone);
-        body.put("notify_url", notifyUrl);
-        body.put("return_url", returnUrl);
-        body.put("cancel_url", cancelUrl);
-        body.put("external_id", idempotencyKey);
-        body.put("store_name", "Night Karaoke Stars");
+        Map<String, Object> invoice = new HashMap<>();
+        invoice.put("items", java.util.List.of(item));
+        invoice.put("total_amount", montant.intValue());
+        invoice.put("devise", "XOF");
+        invoice.put("description", "NKS - Night Karaoke Stars");
+        invoice.put("customer", telephone != null ? telephone : "");
+        invoice.put("customer_firstname", "Client");
+        invoice.put("customer_lastname", "NKS");
+        invoice.put("customer_email", "noreply@laterrasse.bf");
+
+        Map<String, Object> store = new HashMap<>();
+        store.put("name", "Night Karaoke Stars");
+        store.put("website_url", "https://laterrasse.bf");
+
+        Map<String, Object> actions = new HashMap<>();
+        actions.put("cancel_url", cancelUrl);
+        actions.put("return_url", returnUrl);
+        actions.put("callback_url", notifyUrl);
+
+        Map<String, Object> customData = new HashMap<>();
+        customData.put("external_id", idempotencyKey);
+
+        Map<String, Object> commande = new HashMap<>();
+        commande.put("invoice", invoice);
+        commande.put("store", store);
+        commande.put("actions", actions);
+        commande.put("custom_data", customData);
+
+        Map<String, Object> body = Map.of("commande", commande);
 
         try {
             JsonNode response = client().post()
@@ -101,9 +126,19 @@ public class LigdiCashGateway implements PaymentGateway {
             }
 
             String token = response.path("token").asText(null);
+            String responseText = response.path("response_text").asText("");
             String redirectUrl = response.path("redirect_url").asText(null);
 
-            log.info("LigdiCash createInvoice réussi — token={}", token);
+            // Dans l'API Hosted de LigdiCash, l'URL de paiement est renvoyée dans response_text ou redirect_url
+            if (redirectUrl == null || redirectUrl.isBlank()) {
+                if (responseText.startsWith("http")) {
+                    redirectUrl = responseText;
+                } else if (token != null) {
+                    redirectUrl = "https://app.ligdicash.com/pay/v01/redirect/checkout-invoice/" + token;
+                }
+            }
+
+            log.info("LigdiCash createInvoice réussi — token={} redirectUrl={}", token, redirectUrl);
             return new InitiationPaiement(redirectUrl, token);
 
         } catch (WebClientResponseException e) {
@@ -114,14 +149,12 @@ public class LigdiCashGateway implements PaymentGateway {
 
     @Override
     public ConfirmationPaiement confirmerPaiement(String token) {
-        PaymentProperties.LigdiCash cfg = paymentProperties.getLigdicash();
-
-        Map<String, Object> body = Map.of("apikey", cfg.getApiKey(), "token", token);
-
         try {
-            JsonNode response = client().post()
-                    .uri("/redirect/checkout-invoice/confirm")
-                    .bodyValue(body)
+            JsonNode response = client().get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/redirect/checkout-invoice/confirm/")
+                            .queryParam("invoiceToken", token)
+                            .build())
                     .retrieve()
                     .bodyToMono(JsonNode.class)
                     .block();
@@ -138,9 +171,17 @@ public class LigdiCashGateway implements PaymentGateway {
             boolean succes = "completed".equalsIgnoreCase(status) && "00".equals(responseCode);
 
             String montantStr = response.path("amount").asText(null);
+            if (montantStr == null || montantStr.isBlank()) {
+                montantStr = response.path("total_amount").asText(null);
+            }
             BigDecimal montant = null;
             if (montantStr != null && !montantStr.isBlank()) {
                 try { montant = new BigDecimal(montantStr); } catch (NumberFormatException ignored) {}
+            }
+
+            String telephone = response.path("customer_phone_number").asText(null);
+            if (telephone == null || telephone.isBlank()) {
+                telephone = response.path("customer").asText(null);
             }
 
             log.info("LigdiCash confirmInvoice token={} → status={} code={}", token, status, responseCode);
@@ -151,7 +192,7 @@ public class LigdiCashGateway implements PaymentGateway {
                     token,
                     status,
                     montant,
-                    response.path("customer_phone_number").asText(null),
+                    telephone,
                     response.toString(),
                     responseCode,
                     succes ? null : responseText

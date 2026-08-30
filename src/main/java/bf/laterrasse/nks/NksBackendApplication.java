@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Night Karaoke Stars (NKS) — Backend API.
- * Restaurant La Terrasse (Ouagadougou, Burkina Faso) x Bright Group.
+ * Restaurant La Terrasse (Ouagadougou, Burkina Faso).
  *
  * Architecture : monolithe modulaire Spring Boot (ADR-07).
  */
