@@ -112,6 +112,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Rate limiting (brute-force login — §14.8) -->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j-core</artifactId>
+            <version>8.10.1</version>
+        </dependency>
+
         <!-- Dotenv — charge .env au démarrage (dev local) -->
         <dependency>
             <groupId>me.paulschwarz</groupId>

@@ -53,4 +53,8 @@ public class SoireeEvent {
     @Column(name = "vote_sur_place_actif", nullable = false)
     @Builder.Default
     private boolean voteSurPlaceActif = false;
+
+    @Column(name = "resultats_publies", nullable = false)
+    @Builder.Default
+    private boolean resultatsPublies = false;
 }

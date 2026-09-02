@@ -80,6 +80,8 @@ nks:
       api-secret: ${LIGDICASH_API_SECRET:}
       webhook-secret: ${LIGDICASH_WEBHOOK_SECRET:}
       callback-base-url: ${LIGDICASH_CALLBACK_BASE_URL:http://localhost:8080/api/v1}
+      # IPs autorisées pour les webhooks (CSV). Laisser vide pour tout accepter (dev).
+      allowed-ips: ${LIGDICASH_ALLOWED_IPS:}
   sms:
     provider: hdrstream  # hdrstream (actuel) | africastalking (dès activation du compte)
     # Proxy HDR Stream — expéditeur alphanumérique "NKS 2026" (si provider=hdrstream)

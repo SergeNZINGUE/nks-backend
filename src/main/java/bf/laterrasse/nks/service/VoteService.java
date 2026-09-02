@@ -16,6 +16,7 @@ import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.exception.ValidationMetierException;
 import bf.laterrasse.nks.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,7 @@ import java.util.List;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class VoteService {
 
     private static final List<TypeVote> TYPES_SOCIAUX = List.of(TypeVote.SOCIAL_LIKE, TypeVote.SOCIAL_COMMENTAIRE);
@@ -59,20 +61,19 @@ public class VoteService {
             throw new ConflitEtatException("La fenêtre de vote de cette phase n'est pas active (RM-24)");
         }
 
-        verifierAntiFraude(request.telephone(), request.nbVotes());
-
         int prixVote = parametrePlateformeService.getInt("PRIX_VOTE_FCFA", 100);
         BigDecimal montant = BigDecimal.valueOf((long) request.nbVotes() * prixVote);
 
+        String telephone = request.telephone() != null ? request.telephone() : "";
         PaiementInitie paiementInitie = paiementService.creerEtDemarrer(
-                TypePaiement.VOTE, montant, request.telephone(), null);
+                TypePaiement.VOTE, montant, telephone, null);
 
         Vote vote = Vote.builder()
                 .candidat(candidat)
                 .phase(phase)
                 .typeVote(TypeVote.EN_LIGNE_PAYANT)
                 .nombreVoix(request.nbVotes())
-                .sourceTelephone(request.telephone())
+                .sourceTelephone(telephone)
                 .build();
         vote = voteRepository.save(vote);
 
@@ -81,7 +82,7 @@ public class VoteService {
                 .paiement(paiementInitie.paiement())
                 .nombreVotesAchetes(request.nbVotes())
                 .montantTotal(montant)
-                .telephoneVotant(request.telephone())
+                .telephoneVotant(telephone)
                 .build());
 
         return new InitierVoteResponse(paiementInitie.paiement().getId(), paiementInitie.urlPaiement(),
@@ -89,27 +90,30 @@ public class VoteService {
     }
 
     @EventListener
+    @org.springframework.transaction.annotation.Transactional
     public void onPaiementConfirme(PaiementConfirmeEvent event) {
         if (event.typePaiement() != TypePaiement.VOTE) {
             return;
         }
-        // Le vote est déjà "actif" côté requêtes de classement dès que le paiement passe
-        // COMPLETED (jointure sur paiement.statut). Il ne reste qu'à confirmer au votant.
-        votePayantRepository.findByPaiementId(event.paiementId())
-                .ifPresent(vp -> notificationService.envoyerSms(null, vp.getTelephoneVotant(),
-                        TypeNotification.PAIEMENT_CONFIRME,
-                        "NKS : merci ! Vos " + vp.getNombreVotesAchetes() + " votes ont été crédités."));
-    }
-
-    private void verifierAntiFraude(String telephone, int nbVotesDemandes) {
-        int seuil = parametrePlateformeService.getInt("MAX_VOTES_PAYANTS_PAR_TELEPHONE_PAR_HEURE", 20);
-        Instant depuis = Instant.now().minus(1, ChronoUnit.HOURS);
-        long deja = voteRepository.countBySourceTelephoneAndTypeVoteAndDateVoteAfter(
-                telephone, TypeVote.EN_LIGNE_PAYANT, depuis);
-        if (deja + nbVotesDemandes > seuil) {
-            throw new ValidationMetierException(
-                    "Limite anti-fraude atteinte : maximum " + seuil + " votes payants par heure et par numéro (RM-25)");
-        }
+        votePayantRepository.findByPaiementId(event.paiementId()).ifPresent(vp -> {
+            String telephonePayeur = event.telephonePayeur();
+            if (telephonePayeur != null && !telephonePayeur.isBlank()) {
+                int seuil = parametrePlateformeService.getInt("MAX_VOTES_PAYANTS_PAR_TELEPHONE_PAR_HEURE", 20);
+                Instant depuis = Instant.now().minus(1, ChronoUnit.HOURS);
+                long dejaAchetes = votePayantRepository.sommeVotesConfirmesParTelephonePayeur(telephonePayeur, depuis);
+                if (dejaAchetes > seuil) {
+                    vp.setFraudeDetectee(true);
+                    votePayantRepository.save(vp);
+                    log.warn("Anti-fraude RM-25 : paiement {} marqué fraudeDetectee — {} achats sur {} autorisés (MSISDN payeur {})",
+                            event.paiementId(), dejaAchetes, seuil, telephonePayeur);
+                    notificationService.envoyerSms(null, vp.getTelephoneVotant(), TypeNotification.PAIEMENT_CONFIRME,
+                            "NKS : paiement reçu. Vos votes feront l'objet d'un contrôle anti-fraude.");
+                    return;
+                }
+            }
+            notificationService.envoyerSms(null, vp.getTelephoneVotant(), TypeNotification.PAIEMENT_CONFIRME,
+                    "NKS : merci ! Vos " + vp.getNombreVotesAchetes() + " votes ont été crédités.");
+        });
     }
 
     // ---- Lecture / classement ----

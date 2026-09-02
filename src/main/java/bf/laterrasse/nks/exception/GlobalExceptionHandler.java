@@ -63,6 +63,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(ApiError.of("ARGUMENT_INVALIDE", ex.getMessage()));
     }
 
+    @ExceptionHandler(bf.laterrasse.nks.exception.TropDeTentativesException.class)
+    public ResponseEntity<ApiError> handleTropDeTentatives(bf.laterrasse.nks.exception.TropDeTentativesException ex) {
+        return ResponseEntity.status(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", "900")
+                .body(ApiError.of("TROP_DE_TENTATIVES", ex.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGeneric(Exception ex) {
         log.error("Erreur non gérée", ex);

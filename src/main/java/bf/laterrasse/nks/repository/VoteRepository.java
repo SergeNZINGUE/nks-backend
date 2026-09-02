@@ -15,12 +15,13 @@ public interface VoteRepository extends JpaRepository<Vote, UUID> {
 
     List<Vote> findByPhaseId(UUID phaseId);
 
-    /** Votes payants confirmés uniquement (paiement COMPLETED) — évite de compter les paiements PENDING/FAILED. */
+    /** Votes payants confirmés (COMPLETED) hors fraude détectée — source de vérité pour le classement. */
     @Query("""
             SELECT COALESCE(SUM(v.nombreVoix), 0) FROM Vote v
             JOIN VotePayant vp ON vp.vote = v
             WHERE v.candidat.id = :candidatId AND v.phase.id = :phaseId
               AND v.typeVote = 'EN_LIGNE_PAYANT' AND vp.paiement.statut = 'COMPLETED'
+              AND vp.fraudeDetectee = false
             """)
     long sommeVoixPayantesConfirmees(UUID candidatId, UUID phaseId);
 
@@ -29,6 +30,7 @@ public interface VoteRepository extends JpaRepository<Vote, UUID> {
             JOIN VotePayant vp ON vp.vote = v
             WHERE v.phase.id = :phaseId
               AND v.typeVote = 'EN_LIGNE_PAYANT' AND vp.paiement.statut = 'COMPLETED'
+              AND vp.fraudeDetectee = false
             """)
     long totalVoixPayantesConfirmeesPourPhase(UUID phaseId);
 

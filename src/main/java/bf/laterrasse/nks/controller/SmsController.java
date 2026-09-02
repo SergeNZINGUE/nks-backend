@@ -1,5 +1,6 @@
 package bf.laterrasse.nks.controller;
 
+import bf.laterrasse.nks.aop.Auditable;
 import bf.laterrasse.nks.dto.sms.SmsBulkResponse;
 import bf.laterrasse.nks.dto.sms.SmsRequest;
 import bf.laterrasse.nks.gateway.sms.SmsGateway;
@@ -32,6 +33,7 @@ public class SmsController {
     /** Envoi unitaire — admin uniquement. */
     @PostMapping("/envoyer")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @Auditable(action = "SMS_ENVOYE", entite = "Sms")
     public ResponseEntity<?> envoyer(@Valid @RequestBody SmsRequest request) {
         String sid = smsGateway.envoyer(request.getTo(), request.getMessage());
         return ResponseEntity.ok(Map.of("success", true, "sid", sid != null ? sid : ""));
@@ -43,6 +45,7 @@ public class SmsController {
      */
     @PostMapping("/candidatures-validees")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @Auditable(action = "SMS_MASSE_ENVOYE", entite = "Sms")
     @Transactional(readOnly = true)
     public ResponseEntity<SmsBulkResponse> envoyerAuxCandidaturesValidees() {
         var candidatures = candidatureRepository.findValideesAvecCandidatEtUtilisateur();

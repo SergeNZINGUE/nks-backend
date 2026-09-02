@@ -35,11 +35,13 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
+    private final RateLimitService rateLimitService;
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     @Transactional
-    public LoginResponse login(LoginRequest request) {
+    public LoginResponse login(String ip, LoginRequest request) {
+        rateLimitService.verifierTentativeLogin(ip, request.email());
         Utilisateur utilisateur = utilisateurRepository
                 .findByEmailIgnoreCaseAndDateSuppressionIsNull(request.email())
                 .orElseThrow(() -> new AccesRefuseException("Identifiants invalides"));

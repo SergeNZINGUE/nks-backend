@@ -120,6 +120,20 @@ public class JuryController {
         return ResponseEntity.noContent().build();
     }
 
+    @PutMapping("/soirees/{id}/deverrouiller-notation")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Void> deverrouillerNotation(@PathVariable UUID id) {
+        juryService.deverrouillerSoiree(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/soirees/{id}/publier-resultats")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Void> publierResultats(@PathVariable UUID id) {
+        juryService.publierResultats(id);
+        return ResponseEntity.noContent().build();
+    }
+
     private Jury juryDuUtilisateurCourant() {
         UUID utilisateurId = currentUserProvider.getCurrentUserId();
         return juryRepository.findByUtilisateurId(utilisateurId)

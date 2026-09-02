@@ -62,7 +62,7 @@ public class CandidatController {
     @Transactional(readOnly = true)
     public ResponseEntity<List<ResultatPhaseResponse>> scores(@PathVariable UUID id) {
         getCandidat(id); // 404 si le candidat n'existe pas
-        List<ResultatPhaseResponse> result = resultatPhaseRepository.findByCandidatId(id).stream()
+        List<ResultatPhaseResponse> result = resultatPhaseRepository.findByCandidatIdEtResultatsPublies(id).stream()
                 .map(ResultatPhaseResponse::from)
                 .toList();
         return ResponseEntity.ok(result);

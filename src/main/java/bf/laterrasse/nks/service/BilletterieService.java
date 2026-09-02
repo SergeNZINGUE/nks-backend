@@ -9,9 +9,11 @@ import bf.laterrasse.nks.dto.billetterie.ReservationRequest;
 import bf.laterrasse.nks.dto.billetterie.ReservationResponse;
 import bf.laterrasse.nks.event.PaiementConfirmeEvent;
 import bf.laterrasse.nks.event.PaiementEchoueEvent;
+import bf.laterrasse.nks.exception.AccesRefuseException;
 import bf.laterrasse.nks.exception.ConflitEtatException;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.exception.ValidationMetierException;
+import bf.laterrasse.nks.gateway.sms.SmsGateway;
 import bf.laterrasse.nks.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -122,9 +124,14 @@ public class BilletterieService {
     }
 
     @Transactional
-    public void annulerReservation(UUID reservationId) {
+    public void annulerReservation(UUID reservationId, String telephoneAppelant) {
         Reservation reservation = reservationRepository.findById(reservationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Réservation introuvable"));
+
+        if (!SmsGateway.normaliserTelephone(reservation.getTelephoneReservant())
+                .equals(SmsGateway.normaliserTelephone(telephoneAppelant))) {
+            throw new AccesRefuseException("Réservation non associée à ce numéro de téléphone");
+        }
 
         if (reservation.getStatut() != StatutReservation.CONFIRMEE) {
             throw new ConflitEtatException("Seule une réservation confirmée peut être annulée");
@@ -176,6 +183,10 @@ public class BilletterieService {
     }
 
     private void genererTickets(Reservation reservation, CategorieTicket categorie) {
+        if (ticketRepository.existsByReservationId(reservation.getId())) {
+            log.info("Billets déjà émis pour la réservation {} — ignoré", reservation.getId());
+            return;
+        }
         for (int i = 0; i < reservation.getNbPlaces(); i++) {
             Ticket ticket = Ticket.builder()
                     .reservation(reservation)

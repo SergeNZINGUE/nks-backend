@@ -1,6 +1,7 @@
 package bf.laterrasse.nks.controller;
 
 import bf.laterrasse.nks.domain.CategorieTicket;
+import bf.laterrasse.nks.dto.billetterie.AnnulerReservationRequest;
 import bf.laterrasse.nks.dto.billetterie.ReservationPublicResponse;
 import bf.laterrasse.nks.dto.billetterie.ReservationRequest;
 import bf.laterrasse.nks.dto.billetterie.ReservationResponse;
@@ -51,8 +52,9 @@ public class BilletterieController {
     }
 
     @DeleteMapping("/reservations/{id}")
-    public ResponseEntity<Void> annuler(@PathVariable UUID id) {
-        billetterieService.annulerReservation(id);
+    public ResponseEntity<Void> annuler(@PathVariable UUID id,
+                                        @Valid @RequestBody AnnulerReservationRequest request) {
+        billetterieService.annulerReservation(id, request.telephone());
         return ResponseEntity.noContent().build();
     }
 

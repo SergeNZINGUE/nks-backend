@@ -36,4 +36,8 @@ public class VotePayant {
 
     @Column(name = "telephone_votant", nullable = false, length = 20)
     private String telephoneVotant;
+
+    @Column(name = "fraude_detectee", nullable = false)
+    @Builder.Default
+    private boolean fraudeDetectee = false;
 }

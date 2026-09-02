@@ -119,8 +119,11 @@ public class PaiementService {
             return;
         }
 
-        if (!callbackRepository.existsByToken(token)) {
-            callbackRepository.save(new LigdiCashCallback(token));
+        try {
+            callbackRepository.saveAndFlush(new LigdiCashCallback(token));
+        } catch (DataIntegrityViolationException e) {
+            log.info("Callback {} déjà enregistré — doublon ignoré (idempotence atomique)", token);
+            return;
         }
 
         traiterConfirmationToken(token, payload);
@@ -154,7 +157,7 @@ public class PaiementService {
     }
 
     private void traiterConfirmationToken(String token, String payloadBrut) {
-        Paiement paiement = paiementRepository.findByReferenceExterne(token).orElse(null);
+        Paiement paiement = paiementRepository.findByReferenceExterneForUpdate(token).orElse(null);
         if (paiement == null) {
             log.warn("LigdiCash : aucun paiement pour token={}", token);
             return;
@@ -190,7 +193,7 @@ public class PaiementService {
             eventPublisher.publishEvent(new PaiementConfirmeEvent(
                     paiement.getId(), paiement.getTypePaiement(),
                     paiement.getUtilisateur() != null ? paiement.getUtilisateur().getId() : null,
-                    paiement.getMontant(), token));
+                    paiement.getMontant(), token, confirmation.telephonePayeur()));
         } else if ("notcompleted".equalsIgnoreCase(confirmation.statutOperateur())) {
             paiement.setStatut(StatutPaiement.FAILED);
             paiement.setDateFinalisation(Instant.now());
@@ -218,7 +221,7 @@ public class PaiementService {
         eventPublisher.publishEvent(new PaiementConfirmeEvent(
                 paiement.getId(), paiement.getTypePaiement(),
                 paiement.getUtilisateur() != null ? paiement.getUtilisateur().getId() : null,
-                paiement.getMontant(), referenceManuelle));
+                paiement.getMontant(), referenceManuelle, null));
 
         return paiement;
     }

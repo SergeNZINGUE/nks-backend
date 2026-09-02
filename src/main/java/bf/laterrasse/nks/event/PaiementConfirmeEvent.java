@@ -15,6 +15,7 @@ public record PaiementConfirmeEvent(
         TypePaiement typePaiement,
         UUID utilisateurId,
         BigDecimal montant,
-        String referenceExterne
+        String referenceExterne,
+        String telephonePayeur
 ) {
 }

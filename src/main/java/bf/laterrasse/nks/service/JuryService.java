@@ -72,6 +72,29 @@ public class JuryService {
     }
 
     @Transactional
+    @bf.laterrasse.nks.aop.Auditable(action = "RESULTATS_SOIREE_PUBLIES", entite = "SoireeEvent")
+    public void publierResultats(UUID soireeId) {
+        SoireeEvent soiree = soireeEventRepository.findById(soireeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Soirée introuvable"));
+        soiree.setResultatsPublies(true);
+        soireeEventRepository.save(soiree);
+    }
+
+    @Transactional
+    @bf.laterrasse.nks.aop.Auditable(action = "NOTATION_SOIREE_DEVERROUILLEE", entite = "SoireeEvent")
+    public void deverrouillerSoiree(UUID soireeId) {
+        soireeEventRepository.findById(soireeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Soirée introuvable"));
+        List<NoteJury> notes = noteJuryRepository.findBySoireeId(soireeId);
+        Instant now = Instant.now();
+        notes.forEach(n -> {
+            n.setVerrouille(false);
+            n.setDateModification(now);
+        });
+        noteJuryRepository.saveAll(notes);
+    }
+
+    @Transactional
     @bf.laterrasse.nks.aop.Auditable(action = "NOTATION_SOIREE_CLOTUREE", entite = "SoireeEvent")
     public void cloturerSoiree(UUID soireeId) {
         SoireeEvent soiree = soireeEventRepository.findById(soireeId)

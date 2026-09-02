@@ -4,6 +4,7 @@ import bf.laterrasse.nks.dto.auth.LoginRequest;
 import bf.laterrasse.nks.dto.auth.LoginResponse;
 import bf.laterrasse.nks.dto.auth.RefreshRequest;
 import bf.laterrasse.nks.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,8 +18,9 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request,
+                                               HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(authService.login(httpRequest.getRemoteAddr(), request));
     }
 
     @PostMapping("/refresh")

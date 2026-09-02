@@ -2,6 +2,7 @@ package bf.laterrasse.nks.controller;
 
 import bf.laterrasse.nks.config.MediaProperties;
 import bf.laterrasse.nks.domain.enums.Enums.StatutMedia;
+import bf.laterrasse.nks.dto.media.EnregistrerPhotoRequest;
 import bf.laterrasse.nks.dto.media.MediaPublicResponse;
 import bf.laterrasse.nks.dto.media.UploadUrlRequest;
 import bf.laterrasse.nks.dto.media.UploadUrlResponse;
@@ -9,9 +10,12 @@ import bf.laterrasse.nks.exception.ValidationMetierException;
 import bf.laterrasse.nks.gateway.media.MediaStorageGateway;
 import bf.laterrasse.nks.gateway.media.PresignedUpload;
 import bf.laterrasse.nks.repository.MediaRepository;
+import bf.laterrasse.nks.security.CurrentUserProvider;
+import bf.laterrasse.nks.service.MediaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -33,6 +37,16 @@ public class MediaController {
     private final MediaStorageGateway mediaStorageGateway;
     private final MediaProperties mediaProperties;
     private final MediaRepository mediaRepository;
+    private final MediaService mediaService;
+    private final CurrentUserProvider currentUserProvider;
+
+    @PostMapping("/medias")
+    @PreAuthorize("hasRole('CANDIDAT')")
+    public ResponseEntity<MediaPublicResponse> enregistrerPhoto(@Valid @RequestBody EnregistrerPhotoRequest request) {
+        var utilisateurId = currentUserProvider.getCurrentUserId();
+        return ResponseEntity.status(201)
+                .body(MediaPublicResponse.from(mediaService.enregistrerPhotoProfil(utilisateurId, request)));
+    }
 
     @GetMapping("/medias/candidat/{candidatId}")
     public ResponseEntity<List<MediaPublicResponse>> mediasCandidat(@PathVariable UUID candidatId) {
