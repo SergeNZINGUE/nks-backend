@@ -60,11 +60,13 @@ public class MediaService {
     }
 
     private String extraireFormat(String publicId) {
-        if (publicId == null) return "JPEG";
-        int dot = publicId.lastIndexOf('.');
-        if (dot >= 0 && dot < publicId.length() - 1) {
-            return publicId.substring(dot + 1).toUpperCase();
+        if (publicId != null) {
+            int dot = publicId.lastIndexOf('.');
+            if (dot >= 0 && dot < publicId.length() - 1) {
+                String ext = publicId.substring(dot + 1).toUpperCase();
+                return ext.equals("PNG") ? "PNG" : "JPG";
+            }
         }
-        return "JPEG";
+        return "JPG";
     }
 }
