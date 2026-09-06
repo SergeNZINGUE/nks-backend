@@ -8,6 +8,7 @@ import bf.laterrasse.nks.repository.SoireeEventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,6 +24,7 @@ public class SoireeController {
     private final PhaseRepository phaseRepository;
 
     @GetMapping
+    @Transactional(readOnly = true)
     public ResponseEntity<List<SoireeEvent>> lister(@RequestParam(required = false) UUID editionId) {
         if (editionId != null) {
             return ResponseEntity.ok(soireeEventRepository.findByEditionId(editionId));
@@ -32,6 +34,7 @@ public class SoireeController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @Transactional
     public ResponseEntity<SoireeEvent> creer(@RequestBody SoireeEvent soiree, @RequestParam UUID phaseId) {
         Phase phase = phaseRepository.findById(phaseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Phase introuvable"));
@@ -42,6 +45,7 @@ public class SoireeController {
     }
 
     @GetMapping("/{id}")
+    @Transactional(readOnly = true)
     public ResponseEntity<SoireeEvent> detail(@PathVariable UUID id) {
         return ResponseEntity.ok(soireeEventRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Soirée introuvable")));
@@ -49,6 +53,7 @@ public class SoireeController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @Transactional
     public ResponseEntity<SoireeEvent> mettreAJour(@PathVariable UUID id, @RequestBody SoireeEvent modif) {
         SoireeEvent soiree = soireeEventRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Soirée introuvable"));

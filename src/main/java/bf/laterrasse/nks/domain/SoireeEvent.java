@@ -1,6 +1,7 @@
 package bf.laterrasse.nks.domain;
 
 import bf.laterrasse.nks.domain.enums.Enums.StatutSoiree;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -21,10 +22,12 @@ public class SoireeEvent {
     @Column(columnDefinition = "uuid")
     private UUID id;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "edition_id", nullable = false)
     private Edition edition;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "phase_id", nullable = false)
     private Phase phase;

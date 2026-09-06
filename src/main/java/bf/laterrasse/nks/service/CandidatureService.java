@@ -18,6 +18,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -48,6 +49,7 @@ public class CandidatureService {
     private final UtilisateurRepository utilisateurRepository;
     private final CandidatRepository candidatRepository;
     private final CandidatureRepository candidatureRepository;
+    private final PaiementRepository paiementRepository;
     private final MediaRepository mediaRepository;
     private final VideoRepository videoRepository;
     private final EditionRepository editionRepository;
@@ -268,6 +270,32 @@ public class CandidatureService {
         } catch (Exception e) {
             log.warn("Notifications non envoyées pour activation profil candidature {} : {}", candidatureId, e.getMessage());
         }
+    }
+
+    @Transactional
+    @bf.laterrasse.nks.aop.Auditable(action = "CANDIDATURE_ACTIVEE_MANUELLEMENT", entite = "Candidature")
+    public Candidature activerManuellement(UUID candidatureId, Utilisateur admin,
+                                           String referenceReglement, BigDecimal montant) {
+        Candidature candidature = candidatureRepository.findById(candidatureId)
+                .orElseThrow(() -> new ResourceNotFoundException("Candidature introuvable"));
+        if (candidature.getStatut() != StatutCandidature.EN_ATTENTE_PAIEMENT) {
+            throw new ConflitEtatException(
+                    "La candidature n'est pas en attente de paiement (statut : " + candidature.getStatut() + ")");
+        }
+
+        BigDecimal montantEffectif = montant != null ? montant : BigDecimal.valueOf(15000);
+        paiementRepository.save(Paiement.builder()
+                .utilisateur(candidature.getCandidat().getUtilisateur())
+                .typePaiement(TypePaiement.INSCRIPTION)
+                .montant(montantEffectif)
+                .statut(StatutPaiement.COMPLETED)
+                .referenceExterne(referenceReglement)
+                .manuel(true)
+                .dateFinalisation(Instant.now())
+                .build());
+
+        activerApresPaiement(candidatureId);
+        return candidature;
     }
 
     private Candidature getCandidatureEnAttente(UUID candidatureId) {

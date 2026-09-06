@@ -2,6 +2,7 @@ package bf.laterrasse.nks.controller;
 
 import bf.laterrasse.nks.domain.Candidature;
 import bf.laterrasse.nks.domain.enums.Enums.StatutCandidature;
+import bf.laterrasse.nks.domain.Utilisateur;
 import bf.laterrasse.nks.dto.candidature.*;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.repository.CandidatRepository;
@@ -82,5 +83,15 @@ public class CandidatureController {
         var admin = currentUserProvider.getCurrentUser();
         return ResponseEntity.ok(CandidatureDetailResponse.from(
                 candidatureService.rejeter(id, admin, request.motifRejet())));
+    }
+
+    @PutMapping("/{id}/activer-manuellement")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<CandidatureDetailResponse> activerManuellement(
+            @PathVariable UUID id,
+            @Valid @RequestBody ActiverManuellementRequest request) {
+        Utilisateur admin = currentUserProvider.getCurrentUser();
+        return ResponseEntity.ok(CandidatureDetailResponse.from(
+                candidatureService.activerManuellement(id, admin, request.referenceReglement(), request.montant())));
     }
 }
