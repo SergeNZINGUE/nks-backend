@@ -68,6 +68,18 @@ public class CandidatController {
         return ResponseEntity.ok(result);
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @Transactional
+    public ResponseEntity<CandidatPublicResponse> mettreAJourAdmin(@PathVariable UUID id,
+                                                                     @RequestBody java.util.Map<String, Object> body) {
+        Candidat candidat = candidatRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Candidat introuvable"));
+        if (body.get("biographie") instanceof String bio) candidat.setBiographie(bio);
+        if (body.get("chansonPreselection") instanceof String chanson) candidat.setChansonPreselection(chanson);
+        return ResponseEntity.ok(CandidatPublicResponse.from(candidatRepository.save(candidat)));
+    }
+
     @PutMapping("/mon-profil")
     @PreAuthorize("hasRole('CANDIDAT')")
     @Transactional

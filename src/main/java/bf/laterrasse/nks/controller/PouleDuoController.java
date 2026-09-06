@@ -1,5 +1,6 @@
 package bf.laterrasse.nks.controller;
 
+import bf.laterrasse.nks.domain.AffectationPoule;
 import bf.laterrasse.nks.domain.Duo;
 import bf.laterrasse.nks.domain.Phase;
 import bf.laterrasse.nks.domain.Poule;
@@ -93,6 +94,30 @@ public class PouleDuoController {
     @GetMapping("/duos/phase/{phaseId}")
     public ResponseEntity<List<Duo>> duosPhase(@PathVariable UUID phaseId) {
         return ResponseEntity.ok(duoRepository.findByPhaseId(phaseId));
+    }
+
+    @PutMapping("/poules/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @Transactional
+    public ResponseEntity<PouleResponse> renommerPoule(@PathVariable UUID id,
+                                                        @RequestBody Map<String, Object> body) {
+        Poule poule = pouleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Poule introuvable"));
+        if (body.get("nom") instanceof String nom) poule.setNom(nom);
+        return ResponseEntity.ok(PouleResponse.from(pouleRepository.save(poule)));
+    }
+
+    @PutMapping("/affectations/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @Transactional
+    public ResponseEntity<AffectationPouleResponse> mettreAJourAffectation(@PathVariable UUID id,
+                                                                             @RequestBody Map<String, Object> body) {
+        AffectationPoule a = affectationPouleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Affectation introuvable"));
+        if (body.get("ordrePassage") instanceof Number n) a.setOrdrePassage(n.shortValue());
+        if (body.containsKey("chansonImposee")) a.setChansonImposee((String) body.get("chansonImposee"));
+        affectationPouleRepository.save(a);
+        return ResponseEntity.ok(AffectationPouleResponse.from(a));
     }
 
     @PostMapping("/candidats/{id}/repechage")
