@@ -120,6 +120,17 @@ public class PouleDuoController {
         return ResponseEntity.ok(AffectationPouleResponse.from(a));
     }
 
+    @DeleteMapping("/affectations/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @Transactional
+    public ResponseEntity<Void> retirerAffectation(@PathVariable UUID id) {
+        if (!affectationPouleRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Affectation introuvable");
+        }
+        affectationPouleRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/candidats/{id}/repechage")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<?> repecher(@PathVariable UUID id, @RequestParam UUID phaseId,
