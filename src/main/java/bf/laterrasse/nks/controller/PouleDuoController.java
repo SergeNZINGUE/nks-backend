@@ -1,11 +1,12 @@
 package bf.laterrasse.nks.controller;
 
-import bf.laterrasse.nks.domain.AffectationPoule;
 import bf.laterrasse.nks.domain.Duo;
 import bf.laterrasse.nks.domain.Phase;
 import bf.laterrasse.nks.domain.Poule;
 import bf.laterrasse.nks.dto.admin.AffecterPouleRequest;
 import bf.laterrasse.nks.dto.admin.RepechageRequest;
+import bf.laterrasse.nks.dto.poule.AffectationPouleResponse;
+import bf.laterrasse.nks.dto.poule.PouleResponse;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.repository.AffectationPouleRepository;
 import bf.laterrasse.nks.repository.DuoRepository;
@@ -16,6 +17,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -35,24 +37,45 @@ public class PouleDuoController {
 
     @PostMapping("/poules")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<Poule> creerPoule(@RequestBody Map<String, Object> body) {
+    @Transactional
+    public ResponseEntity<PouleResponse> creerPoule(@RequestBody Map<String, Object> body) {
         UUID phaseId = UUID.fromString((String) body.get("phaseId"));
         Phase phase = phaseRepository.findById(phaseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Phase introuvable"));
         Poule poule = Poule.builder().phase(phase).nom((String) body.get("nom")).build();
-        return ResponseEntity.status(201).body(pouleRepository.save(poule));
+        return ResponseEntity.status(201).body(PouleResponse.from(pouleRepository.save(poule)));
+    }
+
+    @GetMapping("/poules/phase/{phaseId}")
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<PouleResponse>> poulesPhase(@PathVariable UUID phaseId) {
+        return ResponseEntity.ok(
+                pouleRepository.findByPhaseIdWithDetails(phaseId).stream()
+                        .map(PouleResponse::from)
+                        .toList()
+        );
     }
 
     @PostMapping("/poules/{id}/affecter")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<List<AffectationPoule>> affecter(@PathVariable UUID id,
-                                                             @Valid @RequestBody AffecterPouleRequest request) {
-        return ResponseEntity.ok(competitionAdminService.affecterCandidats(id, request.candidatIds()));
+    @Transactional
+    public ResponseEntity<List<AffectationPouleResponse>> affecter(@PathVariable UUID id,
+                                                                     @Valid @RequestBody AffecterPouleRequest request) {
+        return ResponseEntity.ok(
+                competitionAdminService.affecterCandidats(id, request.candidatIds()).stream()
+                        .map(AffectationPouleResponse::from)
+                        .toList()
+        );
     }
 
     @GetMapping("/poules/{id}/candidats")
-    public ResponseEntity<List<AffectationPoule>> candidats(@PathVariable UUID id) {
-        return ResponseEntity.ok(affectationPouleRepository.findByPouleId(id));
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<AffectationPouleResponse>> candidats(@PathVariable UUID id) {
+        return ResponseEntity.ok(
+                affectationPouleRepository.findByPouleIdWithDetails(id).stream()
+                        .map(AffectationPouleResponse::from)
+                        .toList()
+        );
     }
 
     @PostMapping("/duos")

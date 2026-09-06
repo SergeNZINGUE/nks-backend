@@ -5,10 +5,10 @@ import bf.laterrasse.nks.dto.sms.SmsBulkResponse;
 import bf.laterrasse.nks.dto.sms.SmsRequest;
 import bf.laterrasse.nks.gateway.sms.SmsGateway;
 import bf.laterrasse.nks.repository.CandidatureRepository;
-import bf.laterrasse.nks.service.CandidatureService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +29,9 @@ public class SmsController {
 
     private final SmsGateway smsGateway;
     private final CandidatureRepository candidatureRepository;
+
+    @Value("${nks.inscription.frais-fcfa}")
+    private int fraisInscriptionFcfa;
 
     /** Envoi unitaire — admin uniquement. */
     @PostMapping("/envoyer")
@@ -57,7 +60,9 @@ public class SmsController {
         for (var candidature : candidatures) {
             String telephone = candidature.getCandidat().getUtilisateur().getTelephone();
             try {
-                smsGateway.envoyer(telephone, CandidatureService.SMS_CANDIDATURE_VALIDEE);
+                String sms = "Felicitations candidature acceptee! Reglez vos frais d'inscription "
+                        + fraisInscriptionFcfa + " FCFA https://laterrasse.bf/login ou via OM:+22606071717.BIENVENUE DANS LA COMPETITION!";
+                smsGateway.envoyer(telephone, sms);
                 nbEnvoyes++;
             } catch (Exception e) {
                 log.warn("SMS échoué vers {} (candidature {}) : {}", telephone, candidature.getId(), e.getMessage());

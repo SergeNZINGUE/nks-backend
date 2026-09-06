@@ -41,10 +41,11 @@ public class CandidatureService {
     private static final int AGE_MINIMUM = 18;
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    public static final String SMS_CANDIDATURE_VALIDEE =
-            "Felicitations candidature acceptee! Reglez vos frais d'inscription 15000 FCFA https://laterrasse.bf/login ou via OM:+22606071717.BIENVENUE DANS LA COMPETITION!";
     @Value("${nks.frontend-base-url}")
     private String frontendBaseUrl;
+
+    @Value("${nks.inscription.frais-fcfa}")
+    private int fraisInscriptionFcfa;
 
     private final UtilisateurRepository utilisateurRepository;
     private final CandidatRepository candidatRepository;
@@ -175,11 +176,14 @@ public class CandidatureService {
                     + " espace pour procéder au paiement des frais d'inscription et activer votre profil. Ou réglez par Orange Money sur le numero : 06071717</p>";
 
             String emailCorps = notificationService.construireEmailHtml(candidat.getPrenom(), "Candidature acceptée", contenu,
-                    "Payer mes frais d'inscription (15000 FCFA)", frontendBaseUrl + "/login");
+                    "Payer mes frais d'inscription (" + fraisInscriptionFcfa + " FCFA)", frontendBaseUrl + "/login");
+
+            String smsValidee = "Felicitations candidature acceptee! Reglez vos frais d'inscription "
+                    + fraisInscriptionFcfa + " FCFA https://laterrasse.bf/login ou via OM:+22606071717.BIENVENUE DANS LA COMPETITION!";
 
             notificationService.envoyerSmsEtEmail(candidat, candidat.getTelephone(), candidat.getEmail(),
                     TypeNotification.CANDIDATURE_VALIDEE,
-                    SMS_CANDIDATURE_VALIDEE,
+                    smsValidee,
                     "NKS — Candidature acceptée", emailCorps);
 
         } catch (Exception e) {
@@ -283,7 +287,7 @@ public class CandidatureService {
                     "La candidature n'est pas en attente de paiement (statut : " + candidature.getStatut() + ")");
         }
 
-        BigDecimal montantEffectif = montant != null ? montant : BigDecimal.valueOf(15000);
+        BigDecimal montantEffectif = montant != null ? montant : BigDecimal.valueOf(fraisInscriptionFcfa);
         paiementRepository.save(Paiement.builder()
                 .utilisateur(candidature.getCandidat().getUtilisateur())
                 .typePaiement(TypePaiement.INSCRIPTION)

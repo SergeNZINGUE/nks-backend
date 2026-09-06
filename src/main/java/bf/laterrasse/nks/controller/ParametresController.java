@@ -2,6 +2,7 @@ package bf.laterrasse.nks.controller;
 
 import bf.laterrasse.nks.service.ParametrePlateformeService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,10 +18,13 @@ public class ParametresController {
 
     private final ParametrePlateformeService parametrePlateformeService;
 
+    @Value("${nks.inscription.frais-fcfa}")
+    private int fraisInscriptionFcfa;
+
     @GetMapping("/publics")
     public ResponseEntity<Map<String, Object>> publics() {
         return ResponseEntity.ok(Map.of(
-                "prixInscriptionFcfa", parametrePlateformeService.getInt("PRIX_INSCRIPTION_FCFA", 15000),
+                "prixInscriptionFcfa", parametrePlateformeService.getInt("PRIX_INSCRIPTION_FCFA", fraisInscriptionFcfa),
                 "prixVoteFcfa", parametrePlateformeService.getInt("PRIX_VOTE_FCFA", 100)
         ));
     }
