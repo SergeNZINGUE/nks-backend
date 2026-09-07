@@ -23,8 +23,9 @@ public class ParametresController {
 
     @GetMapping("/publics")
     public ResponseEntity<Map<String, Object>> publics() {
+        int dbPrix = parametrePlateformeService.getInt("PRIX_INSCRIPTION_FCFA", 0);
         return ResponseEntity.ok(Map.of(
-                "prixInscriptionFcfa", parametrePlateformeService.getInt("PRIX_INSCRIPTION_FCFA", fraisInscriptionFcfa),
+                "prixInscriptionFcfa", dbPrix > 0 ? dbPrix : fraisInscriptionFcfa,
                 "prixVoteFcfa", parametrePlateformeService.getInt("PRIX_VOTE_FCFA", 100)
         ));
     }

@@ -80,7 +80,7 @@ public class LigdiCashGateway implements PaymentGateway {
         invoice.put("total_amount", montant.intValue());
         invoice.put("devise", "XOF");
         invoice.put("description", "NKS - Night Karaoke Stars");
-        invoice.put("customer", telephone != null ? telephone : "");
+        invoice.put("customer", "");
         invoice.put("customer_firstname", "Client");
         invoice.put("customer_lastname", "NKS");
         invoice.put("customer_email", "noreply@laterrasse.bf");
