@@ -2,9 +2,12 @@ package bf.laterrasse.nks.service;
 
 import bf.laterrasse.nks.domain.RefreshToken;
 import bf.laterrasse.nks.domain.Utilisateur;
+import bf.laterrasse.nks.dto.auth.ChangerMotDePasseRequest;
 import bf.laterrasse.nks.dto.auth.LoginRequest;
 import bf.laterrasse.nks.dto.auth.LoginResponse;
 import bf.laterrasse.nks.exception.AccesRefuseException;
+import bf.laterrasse.nks.exception.ResourceNotFoundException;
+import bf.laterrasse.nks.exception.ValidationMetierException;
 import bf.laterrasse.nks.repository.RefreshTokenRepository;
 import bf.laterrasse.nks.repository.UtilisateurRepository;
 import bf.laterrasse.nks.security.JwtProperties;
@@ -20,6 +23,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -116,6 +120,17 @@ public class AuthService {
         refreshTokenRepository.save(refreshToken);
 
         return rawToken;
+    }
+
+    @Transactional
+    public void changerMotDePasse(UUID utilisateurId, ChangerMotDePasseRequest request) {
+        Utilisateur utilisateur = utilisateurRepository.findById(utilisateurId)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
+        if (!passwordEncoder.matches(request.motDePasseActuel(), utilisateur.getMotDePasseHash())) {
+            throw new ValidationMetierException("Mot de passe actuel incorrect");
+        }
+        utilisateur.setMotDePasseHash(passwordEncoder.encode(request.nouveauMotDePasse()));
+        utilisateurRepository.save(utilisateur);
     }
 
     private String hash(String value) {

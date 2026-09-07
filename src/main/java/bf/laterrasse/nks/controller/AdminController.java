@@ -3,7 +3,9 @@ package bf.laterrasse.nks.controller;
 import bf.laterrasse.nks.dto.admin.AuditLogResponse;
 import bf.laterrasse.nks.dto.admin.CommunicationRequest;
 import bf.laterrasse.nks.dto.admin.CreerJuryRequest;
+import bf.laterrasse.nks.dto.admin.CreerUtilisateurAdminRequest;
 import bf.laterrasse.nks.dto.admin.DashboardResponse;
+import bf.laterrasse.nks.dto.admin.UtilisateurAdminResponse;
 import bf.laterrasse.nks.dto.jury.JuryResponse;
 import bf.laterrasse.nks.repository.AuditLogRepository;
 import bf.laterrasse.nks.repository.JuryRepository;
@@ -11,6 +13,7 @@ import bf.laterrasse.nks.service.AdminDashboardService;
 import bf.laterrasse.nks.service.CommunicationService;
 import bf.laterrasse.nks.service.JuryAdminService;
 import bf.laterrasse.nks.service.RapportService;
+import bf.laterrasse.nks.service.UtilisateurAdminService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -39,6 +42,7 @@ public class AdminController {
     private final JuryRepository juryRepository;
     private final RapportService rapportService;
     private final AuditLogRepository auditLogRepository;
+    private final UtilisateurAdminService utilisateurAdminService;
 
     @GetMapping("/dashboard")
     public ResponseEntity<DashboardResponse> dashboard() {
@@ -89,6 +93,25 @@ public class AdminController {
         Page<AuditLogResponse> result = auditLogRepository.findAllByOrderByTimestampDesc(pageable)
                 .map(AuditLogResponse::from);
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/utilisateurs")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<UtilisateurAdminResponse> creerUtilisateur(@Valid @RequestBody CreerUtilisateurAdminRequest request) {
+        return ResponseEntity.status(201).body(utilisateurAdminService.creer(request));
+    }
+
+    @PostMapping("/utilisateurs/{id}/reinitialiser-mot-de-passe")
+    public ResponseEntity<Void> reinitialiserMotDePasse(@PathVariable UUID id) {
+        utilisateurAdminService.reinitialiserMotDePasse(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/utilisateurs")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<UtilisateurAdminResponse>> listerUtilisateurs() {
+        return ResponseEntity.ok(utilisateurAdminService.listerAdmins());
     }
 
     private ResponseEntity<byte[]> csvResponse(byte[] content, String filename) {
