@@ -171,19 +171,23 @@ public class PaiementService {
         // Source de vérité : appeler confirmInvoice
         ConfirmationPaiement confirmation = paymentGateway.confirmerPaiement(token);
 
-        TransactionMobileMoney transaction = TransactionMobileMoney.builder()
-                .paiement(paiement)
-                .operateur(OperateurMobileMoney.LIGDICASH)
-                .referenceOperateur(token)
-                .tokenCreation(token)
-                .montant(confirmation.montant() != null ? confirmation.montant() : paiement.getMontant())
-                .telephonePayeur(confirmation.telephonePayeur())
-                .statutOperateur(confirmation.statutOperateur())
-                .codeReponse(confirmation.codeReponse())
-                .motifRejet(confirmation.motifRejet())
-                .webhookPayload(payloadBrut)
-                .dateWebhook(Instant.now())
-                .build();
+        // Mise à jour de la transaction existante si présente (polling multi-passes),
+        // sinon création (premier passage ou callback webhook sans entrée préexistante).
+        TransactionMobileMoney transaction = transactionRepository
+                .findByOperateurAndReferenceOperateur(OperateurMobileMoney.LIGDICASH, token)
+                .orElseGet(() -> TransactionMobileMoney.builder()
+                        .paiement(paiement)
+                        .operateur(OperateurMobileMoney.LIGDICASH)
+                        .referenceOperateur(token)
+                        .tokenCreation(token)
+                        .build());
+        transaction.setMontant(confirmation.montant() != null ? confirmation.montant() : paiement.getMontant());
+        transaction.setTelephonePayeur(confirmation.telephonePayeur());
+        transaction.setStatutOperateur(confirmation.statutOperateur());
+        transaction.setCodeReponse(confirmation.codeReponse());
+        transaction.setMotifRejet(confirmation.motifRejet());
+        if (payloadBrut != null) transaction.setWebhookPayload(payloadBrut);
+        transaction.setDateWebhook(Instant.now());
         transactionRepository.save(transaction);
 
         if (confirmation.succes()) {
