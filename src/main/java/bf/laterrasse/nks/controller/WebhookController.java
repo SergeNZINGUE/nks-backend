@@ -30,8 +30,10 @@ public class WebhookController {
 
     @PostMapping("/ligdicash")
     public ResponseEntity<Void> ligdicash(@RequestBody String payload, HttpServletRequest request) {
+        String remoteIp = request.getRemoteAddr();
+        log.info("Webhook LigdiCash reçu — ip={} payload={}", remoteIp, payload);
+
         if (!allowedIps.isBlank()) {
-            String remoteIp = request.getRemoteAddr();
             boolean autorisee = Arrays.stream(allowedIps.split(","))
                     .map(String::trim)
                     .anyMatch(remoteIp::equals);
