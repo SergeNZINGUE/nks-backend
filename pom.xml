@@ -13,7 +13,7 @@
 
     <groupId>bf.laterrasse.nks</groupId>
     <artifactId>nks-backend</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0-SNAPSHOT</version>
     <name>nks-backend</name>
     <description>Night Karaoke Stars - Backend API (Restaurant La Terrasse, Ouagadougou)</description>
 
