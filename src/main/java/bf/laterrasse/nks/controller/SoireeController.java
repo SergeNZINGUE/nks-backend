@@ -33,7 +33,7 @@ public class SoireeController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     @Transactional
     public ResponseEntity<SoireeEvent> creer(@RequestBody SoireeEvent soiree, @RequestParam UUID phaseId) {
         Phase phase = phaseRepository.findById(phaseId)
@@ -52,7 +52,7 @@ public class SoireeController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     @Transactional
     public ResponseEntity<SoireeEvent> mettreAJour(@PathVariable UUID id, @RequestBody SoireeEvent modif) {
         SoireeEvent soiree = soireeEventRepository.findById(id)

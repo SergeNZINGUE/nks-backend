@@ -32,14 +32,14 @@ public class PartenaireController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Partenaire> creer(@RequestBody Partenaire partenaire) {
         partenaire.setId(null);
         return ResponseEntity.status(201).body(partenaireRepository.save(partenaire));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Partenaire> mettreAJour(@PathVariable UUID id, @RequestBody Partenaire modif) {
         Partenaire partenaire = partenaireRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Partenaire introuvable"));
@@ -55,7 +55,7 @@ public class PartenaireController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Void> desactiver(@PathVariable UUID id) {
         Partenaire partenaire = partenaireRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Partenaire introuvable"));

@@ -83,7 +83,7 @@ public class BilletterieController {
     }
 
     @PostMapping("/admin/billetterie/categories")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<CategorieTicket> creerCategorie(@RequestBody CategorieTicket categorie) {
         categorie.setId(null);
         return ResponseEntity.status(201).body(categorieTicketRepository.save(categorie));

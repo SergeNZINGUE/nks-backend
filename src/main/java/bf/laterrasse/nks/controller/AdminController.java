@@ -4,6 +4,7 @@ import bf.laterrasse.nks.dto.admin.AuditLogResponse;
 import bf.laterrasse.nks.dto.admin.CommunicationRequest;
 import bf.laterrasse.nks.dto.admin.CreerJuryRequest;
 import bf.laterrasse.nks.dto.admin.CreerUtilisateurAdminRequest;
+import bf.laterrasse.nks.dto.admin.DashboardOrganisateurResponse;
 import bf.laterrasse.nks.dto.admin.DashboardResponse;
 import bf.laterrasse.nks.dto.admin.UtilisateurAdminResponse;
 import bf.laterrasse.nks.dto.jury.JuryResponse;
@@ -49,7 +50,14 @@ public class AdminController {
         return ResponseEntity.ok(dashboardService.construire());
     }
 
+    @GetMapping("/dashboard/organisateur")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
+    public ResponseEntity<DashboardOrganisateurResponse> dashboardOrganisateur() {
+        return ResponseEntity.ok(dashboardService.construirePourOrganisateur());
+    }
+
     @PostMapping("/communication/envoyer")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Map<String, Object>> envoyerCommunication(@Valid @RequestBody CommunicationRequest request) {
         return ResponseEntity.ok(communicationService.envoyerGroupe(request));
     }

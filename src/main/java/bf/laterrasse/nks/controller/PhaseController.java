@@ -21,7 +21,7 @@ public class PhaseController {
     private final PhaseRepository phaseRepository;
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Phase> mettreAJour(@PathVariable UUID id, @RequestBody Phase modif) {
         Phase phase = getPhase(id);
         phase.setDateDebut(modif.getDateDebut());
@@ -37,7 +37,7 @@ public class PhaseController {
     }
 
     @PutMapping("/{id}/activer")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Phase> activer(@PathVariable UUID id) {
         Phase phase = getPhase(id);
         phase.setStatut(StatutPhase.EN_COURS);
@@ -45,7 +45,7 @@ public class PhaseController {
     }
 
     @PutMapping("/{id}/cloturer")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Phase> cloturer(@PathVariable UUID id) {
         Phase phase = getPhase(id);
         phase.setStatut(StatutPhase.TERMINEE);
@@ -54,7 +54,7 @@ public class PhaseController {
     }
 
     @PutMapping("/{id}/vote/activer")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Phase> activerVote(@PathVariable UUID id) {
         Phase phase = getPhase(id);
         phase.setVoteActif(true);
@@ -63,7 +63,7 @@ public class PhaseController {
     }
 
     @PutMapping("/{id}/vote/desactiver")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Phase> desactiverVote(@PathVariable UUID id) {
         Phase phase = getPhase(id);
         phase.setVoteActif(false);

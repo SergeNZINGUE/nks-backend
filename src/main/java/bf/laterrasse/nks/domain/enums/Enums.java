@@ -11,7 +11,7 @@ public final class Enums {
     }
 
     public enum RoleName {
-        VISITEUR, CANDIDAT, VOTANT_PUBLIC, JURY, PARTENAIRE, ADMIN, SUPER_ADMIN, AGENT_ACCUEIL
+        VISITEUR, CANDIDAT, VOTANT_PUBLIC, JURY, PARTENAIRE, ADMIN, SUPER_ADMIN, AGENT_ACCUEIL, ORGANISATEUR
     }
 
     public enum StatutUtilisateur {
