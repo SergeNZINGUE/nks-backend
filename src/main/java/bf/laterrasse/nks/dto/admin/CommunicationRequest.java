@@ -11,6 +11,7 @@ public record CommunicationRequest(
         StatutProfilCandidat filtreStatut,   // null = tous les candidats de l'édition
         boolean canalSms,
         boolean canalEmail,
+        boolean canalWhatsapp,
         @NotBlank String message,            // SMS : max 160 caractères (US-35)
         String sujetEmail
 ) {

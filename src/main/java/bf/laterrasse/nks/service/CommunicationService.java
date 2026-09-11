@@ -5,6 +5,7 @@ import bf.laterrasse.nks.domain.Utilisateur;
 import bf.laterrasse.nks.domain.enums.Enums.TypeNotification;
 import bf.laterrasse.nks.dto.admin.CommunicationRequest;
 import bf.laterrasse.nks.exception.ValidationMetierException;
+import bf.laterrasse.nks.gateway.sms.WhatsappGateway;
 import bf.laterrasse.nks.repository.CandidatRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ public class CommunicationService {
 
     private final CandidatRepository candidatRepository;
     private final NotificationService notificationService;
+    private final WhatsappGateway whatsappGateway;
     private static final Logger log = LoggerFactory.getLogger(CommunicationService.class);
 
     public Map<String, Object> envoyerGroupe(CommunicationRequest request) {
@@ -44,6 +46,9 @@ public class CommunicationService {
                             TypeNotification.CONVOCATION,
                             request.sujetEmail() != null ? request.sujetEmail() : "NKS — Information",
                             "<p>" + request.message() + "</p>");
+                }
+                if (request.canalWhatsapp()) {
+                    whatsappGateway.envoyer(utilisateur.getTelephone(), request.message());
                 }
                 succes++;
             } catch (Exception e) {
