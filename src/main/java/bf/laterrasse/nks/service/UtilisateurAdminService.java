@@ -30,7 +30,7 @@ import java.util.UUID;
 public class UtilisateurAdminService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final Set<RoleName> ROLES_AUTORISES = EnumSet.of(RoleName.ADMIN, RoleName.SUPER_ADMIN, RoleName.AGENT_ACCUEIL);
+    private static final Set<RoleName> ROLES_AUTORISES = EnumSet.of(RoleName.ADMIN, RoleName.SUPER_ADMIN, RoleName.AGENT_ACCUEIL, RoleName.ORGANISATEUR);
 
     private final UtilisateurRepository utilisateurRepository;
     private final RoleRepository roleRepository;
