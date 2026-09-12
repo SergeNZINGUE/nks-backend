@@ -9,7 +9,8 @@ import java.util.UUID;
 
 public record CommunicationRequest(
         @NotNull UUID editionId,
-        StatutProfilCandidat filtreStatut,   // null = tous les candidats de l'édition
+        StatutProfilCandidat filtreStatut,   // null = tous les candidats (ignoré si ciblePartenaires=true)
+        boolean ciblePartenaires,            // true → envoyer aux partenaires ACTIFS plutôt qu'aux candidats
         boolean canalSms,
         boolean canalEmail,
         boolean canalWhatsapp,
