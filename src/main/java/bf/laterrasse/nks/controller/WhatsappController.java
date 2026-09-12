@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /** Point 04 de l'audit — pendant WhatsApp de SmsController. */
@@ -26,7 +27,8 @@ public class WhatsappController {
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Auditable(action = "WHATSAPP_ENVOYE", entite = "Whatsapp")
     public ResponseEntity<?> envoyer(@Valid @RequestBody SmsRequest request) {
-        String sid = whatsappGateway.envoyer(request.getTo(), request.getMessage());
+        // Envoi unitaire → toujours karaoke_info (message libre)
+        String sid = whatsappGateway.envoyer(request.getTo(), "karaoke_info", List.of(request.getMessage()));
         return ResponseEntity.ok(Map.of("success", true, "sid", sid != null ? sid : ""));
     }
 }

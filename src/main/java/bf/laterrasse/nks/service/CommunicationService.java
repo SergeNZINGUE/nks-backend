@@ -48,7 +48,12 @@ public class CommunicationService {
                             "<p>" + request.message() + "</p>");
                 }
                 if (request.canalWhatsapp()) {
-                    whatsappGateway.envoyer(utilisateur.getTelephone(), request.message());
+                    String template = (request.templateWhatsapp() != null && !request.templateWhatsapp().isBlank())
+                            ? request.templateWhatsapp() : "karaoke_info";
+                    List<String> variables = (request.variablesWhatsapp() != null && !request.variablesWhatsapp().isEmpty())
+                            ? request.variablesWhatsapp()
+                            : (template.equals("karaoke_info") ? List.of(request.message()) : List.of());
+                    whatsappGateway.envoyer(utilisateur.getTelephone(), template, variables);
                 }
                 succes++;
             } catch (Exception e) {
