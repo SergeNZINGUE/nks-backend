@@ -10,6 +10,7 @@ import bf.laterrasse.nks.domain.enums.Enums.TypePaiement;
 import bf.laterrasse.nks.domain.enums.Enums.TypeVote;
 import bf.laterrasse.nks.dto.vote.InitierVoteRequest;
 import bf.laterrasse.nks.dto.vote.InitierVoteResponse;
+import bf.laterrasse.nks.event.ClassementRefreshEvent;
 import bf.laterrasse.nks.event.PaiementConfirmeEvent;
 import bf.laterrasse.nks.exception.ConflitEtatException;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
@@ -17,9 +18,14 @@ import bf.laterrasse.nks.exception.ValidationMetierException;
 import bf.laterrasse.nks.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.util.UUID;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -46,6 +52,7 @@ public class VoteService {
     private final PaiementService paiementService;
     private final ParametrePlateformeService parametrePlateformeService;
     private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public InitierVoteResponse initierVotePayant(InitierVoteRequest request) {
@@ -113,6 +120,17 @@ public class VoteService {
             }
             notificationService.envoyerSms(null, vp.getTelephoneVotant(), TypeNotification.PAIEMENT_CONFIRME,
                     "NKS : merci ! Vos " + vp.getNombreVotesAchetes() + " votes ont été crédités.");
+
+            // Déclencher le recalcul du classement après commit (afterCommit garantit que
+            // le paiement COMPLETED est visible par la nouvelle transaction du listener).
+            UUID phaseId = vp.getVote().getPhase().getId();
+            UUID editionId = vp.getVote().getPhase().getEdition().getId();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    eventPublisher.publishEvent(new ClassementRefreshEvent(phaseId, editionId));
+                }
+            });
         });
     }
 

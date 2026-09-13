@@ -27,7 +27,7 @@ public class ClassementUpdateJob {
     private final PhaseRepository phaseRepository;
     private final ClassementService classementService;
 
-    @Scheduled(cron = "0 0 * * * *") // toutes les heures pile
+    @Scheduled(fixedRate = 300_000) // toutes les 5 minutes
     public void recalculer() {
         editionRepository.findByStatut(StatutEdition.EN_COURS).ifPresent(this::recalculerPourEdition);
     }
