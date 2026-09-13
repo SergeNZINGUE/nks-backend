@@ -2,6 +2,7 @@ package bf.laterrasse.nks.dto.jury;
 
 import bf.laterrasse.nks.domain.Jury;
 
+import java.util.Set;
 import java.util.UUID;
 
 public record JuryResponse(
@@ -12,7 +13,8 @@ public record JuryResponse(
         String bioPublique,
         String statut,
         UUID editionId,
-        UUID utilisateurId
+        UUID utilisateurId,
+        Set<UUID> soireeIds
 ) {
     public static JuryResponse from(Jury j) {
         return new JuryResponse(
@@ -23,6 +25,8 @@ public record JuryResponse(
                 j.getBioPublique(),
                 j.getStatut().name(),
                 j.getEdition().getId(),
-                j.getUtilisateur().getId());
+                j.getUtilisateur().getId(),
+                j.getSoirees().stream().map(bf.laterrasse.nks.domain.SoireeEvent::getId)
+                        .collect(java.util.stream.Collectors.toSet()));
     }
 }

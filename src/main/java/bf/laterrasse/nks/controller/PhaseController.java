@@ -33,6 +33,7 @@ public class PhaseController {
         phase.setPointsMaxPublic(modif.getPointsMaxPublic());
         phase.setPointsMaxJury(modif.getPointsMaxJury());
         phase.setJuryObligatoire(modif.isJuryObligatoire());
+        phase.setDateLimiteChoixTitres(modif.getDateLimiteChoixTitres());
         return ResponseEntity.ok(phaseRepository.save(phase));
     }
 

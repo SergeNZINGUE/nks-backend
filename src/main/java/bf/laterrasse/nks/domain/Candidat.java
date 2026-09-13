@@ -59,4 +59,18 @@ public class Candidat {
 
     @Column(name = "post_id_tiktok", length = 100)
     private String postIdTiktok;
+
+    /**
+     * Consentement explicite au « Recueil de consentement » (règlement, données
+     * personnelles, frais non remboursables, droit à l'image, clauses de litige) —
+     * distinct de {@code Utilisateur.consentementRgpd} qui est mis à {@code true}
+     * automatiquement à la création du compte et n'a donc aucune valeur probante.
+     * Contrôlé à chaque connexion côté {@code AuthService} — voir LoginResponse.
+     */
+    @Column(name = "consentement_recueil_accepte", nullable = false)
+    @Builder.Default
+    private boolean consentementRecueilAccepte = false;
+
+    @Column(name = "date_consentement_recueil")
+    private Instant dateConsentementRecueil;
 }

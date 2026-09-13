@@ -21,4 +21,12 @@ public interface AffectationPouleRepository extends JpaRepository<AffectationPou
     @org.springframework.data.jpa.repository.Query(
             "SELECT COUNT(a) > 0 FROM AffectationPoule a WHERE a.candidat.id = :candidatId AND a.poule.phase.id = :phaseId")
     boolean existsByCandidatIdAndPhaseId(UUID candidatId, UUID phaseId);
+
+    /** Résout la poule (donc la soirée) d'un candidat pour une phase donnée — RM-41 garantit l'unicité. */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT a FROM AffectationPoule a WHERE a.candidat.id = :candidatId AND a.poule.phase.id = :phaseId")
+    java.util.Optional<AffectationPoule> findByCandidatIdAndPoulePhaseId(UUID candidatId, UUID phaseId);
+
+    /** Toutes les affectations d'un candidat, toutes phases confondues (un candidat peut avancer sur plusieurs phases au fil de l'édition). */
+    List<AffectationPoule> findByCandidatId(UUID candidatId);
 }

@@ -5,10 +5,14 @@ import bf.laterrasse.nks.domain.enums.Enums.StatutProfilCandidat;
 import bf.laterrasse.nks.dto.candidat.CandidatPublicResponse;
 import bf.laterrasse.nks.dto.candidat.MettreAJourProfilRequest;
 import bf.laterrasse.nks.dto.classement.ResultatPhaseResponse;
+import bf.laterrasse.nks.dto.titre.ChoisirTitreRequest;
+import bf.laterrasse.nks.dto.titre.ChoixTitreResponse;
+import bf.laterrasse.nks.dto.titre.MonChoixTitreResponse;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.repository.CandidatRepository;
 import bf.laterrasse.nks.repository.ResultatPhaseRepository;
 import bf.laterrasse.nks.security.CurrentUserProvider;
+import bf.laterrasse.nks.service.ChoixTitreService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -30,6 +34,7 @@ public class CandidatController {
     private final CandidatRepository candidatRepository;
     private final ResultatPhaseRepository resultatPhaseRepository;
     private final CurrentUserProvider currentUserProvider;
+    private final ChoixTitreService choixTitreService;
 
     @GetMapping
     @Transactional(readOnly = true)
@@ -91,6 +96,44 @@ public class CandidatController {
             candidat.setBiographie(request.biographie());
         }
         return ResponseEntity.ok(CandidatPublicResponse.from(candidatRepository.save(candidat)));
+    }
+
+    /**
+     * Acceptation explicite du Recueil de consentement (règlement, données personnelles,
+     * frais non remboursables, droit à l'image, clauses de litige). Contrôlé à chaque
+     * connexion — cf. AuthService.calculerConsentementRequis / LoginResponse.consentementRequis.
+     */
+    @PostMapping("/mon-consentement")
+    @PreAuthorize("hasRole('CANDIDAT')")
+    @Transactional
+    public ResponseEntity<Void> accepterConsentement() {
+        UUID utilisateurId = currentUserProvider.getCurrentUserId();
+        Candidat candidat = candidatRepository.findByUtilisateurId(utilisateurId)
+                .orElseThrow(() -> new ResourceNotFoundException("Aucun profil candidat pour cet utilisateur"));
+        candidat.setConsentementRecueilAccepte(true);
+        candidat.setDateConsentementRecueil(java.time.Instant.now());
+        candidatRepository.save(candidat);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Titres imposés disponibles + choix déjà fait pour la soirée à venir du candidat
+     * connecté (résolue automatiquement — cf. ChoixTitreService.resoudreSoireeActuelle).
+     */
+    @GetMapping("/mon-choix-titre")
+    @PreAuthorize("hasRole('CANDIDAT')")
+    @Transactional(readOnly = true)
+    public ResponseEntity<MonChoixTitreResponse> monChoixTitre() {
+        UUID utilisateurId = currentUserProvider.getCurrentUserId();
+        return ResponseEntity.ok(choixTitreService.monChoixTitre(utilisateurId));
+    }
+
+    @PostMapping("/mon-choix-titre")
+    @PreAuthorize("hasRole('CANDIDAT')")
+    @Transactional
+    public ResponseEntity<ChoixTitreResponse> choisirTitre(@Valid @RequestBody ChoisirTitreRequest request) {
+        UUID utilisateurId = currentUserProvider.getCurrentUserId();
+        return ResponseEntity.ok(choixTitreService.choisir(utilisateurId, request));
     }
 
     private Candidat getCandidat(UUID id) {

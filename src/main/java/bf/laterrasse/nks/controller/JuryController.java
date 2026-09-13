@@ -4,6 +4,7 @@ import bf.laterrasse.nks.domain.AffectationPoule;
 import bf.laterrasse.nks.domain.Candidat;
 import bf.laterrasse.nks.domain.Duo;
 import bf.laterrasse.nks.domain.Jury;
+import bf.laterrasse.nks.dto.admin.GrilleDeliberationResponse;
 import bf.laterrasse.nks.dto.candidat.CandidatPublicResponse;
 import bf.laterrasse.nks.dto.jury.CritereNotationResponse;
 import bf.laterrasse.nks.dto.jury.NoteJuryResponse;
@@ -16,6 +17,7 @@ import bf.laterrasse.nks.repository.DuoRepository;
 import bf.laterrasse.nks.repository.JuryRepository;
 import bf.laterrasse.nks.repository.NoteJuryRepository;
 import bf.laterrasse.nks.security.CurrentUserProvider;
+import bf.laterrasse.nks.service.DeliberationService;
 import bf.laterrasse.nks.service.JuryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +43,7 @@ public class JuryController {
     private final DuoRepository duoRepository;
     private final CritereNotationRepository critereNotationRepository;
     private final CurrentUserProvider currentUserProvider;
+    private final DeliberationService deliberationService;
 
     @GetMapping("/jury/soirees")
     @PreAuthorize("hasRole('JURY')")
@@ -101,6 +104,34 @@ public class JuryController {
                 .map(NoteJuryResponse::from)
                 .toList();
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Grille récapitulative de délibération : pour chaque candidat de cette soirée, le détail
+     * des notes de tous les jurés (critère par critère), plus les votes en ligne (payants +
+     * sociaux, cumulatifs sur la phase) et le vote public sur place (spécifique à cette
+     * soirée). Calculée à la volée, sans persister de résultat — consultable à tout moment, y
+     * compris avant la clôture officielle de la notation.
+     *
+     * Ouvert aux jurés (pas seulement ADMIN/SUPER_ADMIN) pour les aider en délibération finale,
+     * mais un juré ne peut consulter que les soirées qui lui sont affectées — un admin/super-admin
+     * peut consulter n'importe laquelle.
+     */
+    @GetMapping("/soirees/{soireeId}/grille-deliberation")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','JURY')")
+    @Transactional(readOnly = true)
+    public ResponseEntity<GrilleDeliberationResponse> grilleDeliberation(@PathVariable UUID soireeId) {
+        boolean estAdminOuSuperAdmin = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ROLE_SUPER_ADMIN"));
+        if (!estAdminOuSuperAdmin) {
+            Jury jury = juryDuUtilisateurCourant();
+            boolean affecte = jury.getSoirees().stream().anyMatch(s -> s.getId().equals(soireeId));
+            if (!affecte) {
+                throw new bf.laterrasse.nks.exception.AccesRefuseException("Cette soirée ne vous est pas affectée");
+            }
+        }
+        return ResponseEntity.ok(deliberationService.construire(soireeId));
     }
 
     @GetMapping("/jury/criteres")

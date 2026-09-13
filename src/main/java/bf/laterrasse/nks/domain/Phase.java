@@ -90,6 +90,15 @@ public class Phase {
     @Column(name = "date_fermeture_vote")
     private Instant dateFermetureVote;
 
+    /**
+     * Date limite indicative pour que les candidats choisissent leur titre imposé + titre
+     * personnel (cf. TitreImpose/ChoixTitreCandidat). Purement informative : consultée par
+     * le rapport admin pour repérer les retardataires, jamais utilisée pour bloquer la
+     * soumission d'un choix côté candidat.
+     */
+    @Column(name = "date_limite_choix_titres")
+    private Instant dateLimiteChoixTitres;
+
     @PrePersist
     private void avantInsert() {
         if (statut == null) statut = StatutPhase.EN_ATTENTE;

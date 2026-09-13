@@ -4,6 +4,7 @@ import bf.laterrasse.nks.domain.AffectationPoule;
 import bf.laterrasse.nks.domain.Duo;
 import bf.laterrasse.nks.domain.Phase;
 import bf.laterrasse.nks.domain.Poule;
+import bf.laterrasse.nks.domain.SoireeEvent;
 import bf.laterrasse.nks.dto.admin.AffecterPouleRequest;
 import bf.laterrasse.nks.dto.admin.RepechageRequest;
 import bf.laterrasse.nks.dto.poule.AffectationPouleResponse;
@@ -13,6 +14,7 @@ import bf.laterrasse.nks.repository.AffectationPouleRepository;
 import bf.laterrasse.nks.repository.DuoRepository;
 import bf.laterrasse.nks.repository.PhaseRepository;
 import bf.laterrasse.nks.repository.PouleRepository;
+import bf.laterrasse.nks.repository.SoireeEventRepository;
 import bf.laterrasse.nks.service.CompetitionAdminService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +37,7 @@ public class PouleDuoController {
     private final AffectationPouleRepository affectationPouleRepository;
     private final DuoRepository duoRepository;
     private final PhaseRepository phaseRepository;
+    private final SoireeEventRepository soireeEventRepository;
 
     @PostMapping("/poules")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
@@ -43,8 +46,13 @@ public class PouleDuoController {
         UUID phaseId = UUID.fromString((String) body.get("phaseId"));
         Phase phase = phaseRepository.findById(phaseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Phase introuvable"));
-        Poule poule = Poule.builder().phase(phase).nom((String) body.get("nom")).build();
-        return ResponseEntity.status(201).body(PouleResponse.from(pouleRepository.save(poule)));
+        Poule.PouleBuilder builder = Poule.builder().phase(phase).nom((String) body.get("nom"));
+        if (body.get("soireeId") instanceof String soireeIdStr && !soireeIdStr.isBlank()) {
+            SoireeEvent soiree = soireeEventRepository.findById(UUID.fromString(soireeIdStr))
+                    .orElseThrow(() -> new ResourceNotFoundException("Soirée introuvable"));
+            builder.soiree(soiree);
+        }
+        return ResponseEntity.status(201).body(PouleResponse.from(pouleRepository.save(builder.build())));
     }
 
     @GetMapping("/poules/phase/{phaseId}")
@@ -104,6 +112,15 @@ public class PouleDuoController {
         Poule poule = pouleRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Poule introuvable"));
         if (body.get("nom") instanceof String nom) poule.setNom(nom);
+        if (body.containsKey("soireeId")) {
+            if (body.get("soireeId") instanceof String soireeIdStr && !soireeIdStr.isBlank()) {
+                SoireeEvent soiree = soireeEventRepository.findById(UUID.fromString(soireeIdStr))
+                        .orElseThrow(() -> new ResourceNotFoundException("Soirée introuvable"));
+                poule.setSoiree(soiree);
+            } else {
+                poule.setSoiree(null); // soireeId explicitement null/vide : désaffecte la poule
+            }
+        }
         return ResponseEntity.ok(PouleResponse.from(pouleRepository.save(poule)));
     }
 

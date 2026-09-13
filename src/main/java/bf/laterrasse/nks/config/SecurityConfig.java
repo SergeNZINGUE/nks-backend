@@ -52,7 +52,8 @@ public class SecurityConfig {
     private static final String[] PUBLIC_ALL_METHODS_ENDPOINTS = {
             "/auth/**", "/webhooks/**", "/candidatures", "/medias/url-upload", "/videos/url-upload",
             "/medias/*/confirmer", "/videos/*/confirmer", "/votes/initier",
-            "/reservations/initier", "/reservations/mes-tickets", "/reservations/*/ticket"
+            "/reservations/initier", "/reservations/mes-tickets", "/reservations/*/ticket",
+            "/vote-sur-place/**"
     };
 
     @Bean

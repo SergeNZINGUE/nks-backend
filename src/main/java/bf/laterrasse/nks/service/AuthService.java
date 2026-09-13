@@ -2,12 +2,14 @@ package bf.laterrasse.nks.service;
 
 import bf.laterrasse.nks.domain.RefreshToken;
 import bf.laterrasse.nks.domain.Utilisateur;
+import bf.laterrasse.nks.domain.enums.Enums.RoleName;
 import bf.laterrasse.nks.dto.auth.ChangerMotDePasseRequest;
 import bf.laterrasse.nks.dto.auth.LoginRequest;
 import bf.laterrasse.nks.dto.auth.LoginResponse;
 import bf.laterrasse.nks.exception.AccesRefuseException;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.exception.ValidationMetierException;
+import bf.laterrasse.nks.repository.CandidatRepository;
 import bf.laterrasse.nks.repository.RefreshTokenRepository;
 import bf.laterrasse.nks.repository.UtilisateurRepository;
 import bf.laterrasse.nks.security.JwtProperties;
@@ -36,6 +38,7 @@ public class AuthService {
 
     private final UtilisateurRepository utilisateurRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final CandidatRepository candidatRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
@@ -68,7 +71,8 @@ public class AuthService {
                 .collect(Collectors.toList());
 
         return new LoginResponse(accessToken, refreshToken,
-                jwtProperties.getAccessTokenExpirationMinutes() * 60, roles);
+                jwtProperties.getAccessTokenExpirationMinutes() * 60, roles,
+                calculerConsentementRequis(utilisateur, roles));
     }
 
     @Transactional
@@ -94,7 +98,24 @@ public class AuthService {
                 .collect(Collectors.toList());
 
         return new LoginResponse(accessToken, newRefreshToken,
-                jwtProperties.getAccessTokenExpirationMinutes() * 60, roles);
+                jwtProperties.getAccessTokenExpirationMinutes() * 60, roles,
+                calculerConsentementRequis(utilisateur, roles));
+    }
+
+    /**
+     * true uniquement si l'utilisateur est CANDIDAT et n'a pas encore accepté le Recueil de
+     * consentement (cf. Candidat.consentementRecueilAccepte) — le frontend doit alors
+     * rediriger systématiquement vers la page de consentement avant toute autre page.
+     * Recalculé à chaque login ET à chaque refresh, pour que l'acceptation prenne effet
+     * sans attendre l'expiration du token en cours.
+     */
+    private boolean calculerConsentementRequis(Utilisateur utilisateur, List<String> roles) {
+        if (!roles.contains(RoleName.CANDIDAT.name())) {
+            return false;
+        }
+        return candidatRepository.findByUtilisateurId(utilisateur.getId())
+                .map(c -> !c.isConsentementRecueilAccepte())
+                .orElse(false);
     }
 
     @Transactional

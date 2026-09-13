@@ -11,7 +11,7 @@ public final class Enums {
     }
 
     public enum RoleName {
-        VISITEUR, CANDIDAT, VOTANT_PUBLIC, JURY, PARTENAIRE, ADMIN, SUPER_ADMIN, AGENT_ACCUEIL, ORGANISATEUR
+        VISITEUR, CANDIDAT, VOTANT_PUBLIC, JURY, PARTENAIRE, ADMIN, SUPER_ADMIN, AGENT_ACCUEIL, ORGANISATEUR, HOTESSE
     }
 
     public enum StatutUtilisateur {
@@ -100,6 +100,15 @@ public final class Enums {
 
     public enum ResultatScan {
         VALIDE, INVALIDE, DEJA_UTILISE
+    }
+
+    /**
+     * Statut d'un droit de vote sur place (DroitVoteSurPlace) : DISPONIBLE dès qu'un
+     * caissier a validé une consommation réelle sur un billet déjà scanné à l'entrée,
+     * UTILISE dès que le vote correspondant a été exprimé (un seul possible, jamais deux).
+     */
+    public enum StatutDroitVote {
+        DISPONIBLE, UTILISE
     }
 
     public enum CanalNotification {

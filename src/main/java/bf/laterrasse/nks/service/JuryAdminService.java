@@ -3,15 +3,18 @@ package bf.laterrasse.nks.service;
 import bf.laterrasse.nks.domain.Edition;
 import bf.laterrasse.nks.domain.Jury;
 import bf.laterrasse.nks.domain.Role;
+import bf.laterrasse.nks.domain.SoireeEvent;
 import bf.laterrasse.nks.domain.Utilisateur;
 import bf.laterrasse.nks.domain.enums.Enums.RoleName;
 import bf.laterrasse.nks.domain.enums.Enums.StatutJury;
 import bf.laterrasse.nks.domain.enums.Enums.StatutUtilisateur;
 import bf.laterrasse.nks.dto.admin.CreerJuryRequest;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
+import bf.laterrasse.nks.exception.ValidationMetierException;
 import bf.laterrasse.nks.repository.EditionRepository;
 import bf.laterrasse.nks.repository.JuryRepository;
 import bf.laterrasse.nks.repository.RoleRepository;
+import bf.laterrasse.nks.repository.SoireeEventRepository;
 import bf.laterrasse.nks.repository.UtilisateurRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -21,6 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /** Gestion des comptes jury par l'admin (§13.15). */
@@ -34,6 +40,7 @@ public class JuryAdminService {
     private final UtilisateurRepository utilisateurRepository;
     private final RoleRepository roleRepository;
     private final EditionRepository editionRepository;
+    private final SoireeEventRepository soireeEventRepository;
     private final PasswordEncoder passwordEncoder;
     private final NotificationService notificationService;
 
@@ -86,6 +93,30 @@ public class JuryAdminService {
                 .orElseThrow(() -> new ResourceNotFoundException("Membre du jury introuvable"));
         jury.setStatut(StatutJury.INACTIF);
         juryRepository.save(jury);
+    }
+
+    /**
+     * Affecte ce juré à un ensemble de soirées — remplace intégralement la sélection
+     * précédente (table de jointure jurys_soirees). C'est cette affectation qui conditionne
+     * ce que JuryController.mesSoirees()/candidatsANoter() renvoient au juré : sans elle,
+     * un juré ne voit jamais aucune soirée ni aucun candidat à noter.
+     */
+    @Transactional
+    public Jury affecterSoirees(UUID juryId, Set<UUID> soireeIds) {
+        Jury jury = juryRepository.findById(juryId)
+                .orElseThrow(() -> new ResourceNotFoundException("Membre du jury introuvable"));
+
+        Set<SoireeEvent> soirees = new HashSet<>();
+        if (soireeIds != null && !soireeIds.isEmpty()) {
+            List<SoireeEvent> trouvees = soireeEventRepository.findAllById(soireeIds);
+            if (trouvees.size() != soireeIds.size()) {
+                throw new ValidationMetierException("Une ou plusieurs soirées sont introuvables");
+            }
+            soirees.addAll(trouvees);
+        }
+
+        jury.setSoirees(soirees);
+        return juryRepository.save(jury);
     }
 
     private String genererMotDePasseTemporaire() {

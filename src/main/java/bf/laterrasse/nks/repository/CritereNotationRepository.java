@@ -11,6 +11,9 @@ import java.util.UUID;
 public interface CritereNotationRepository extends JpaRepository<CritereNotation, UUID> {
     List<CritereNotation> findByEditionIdAndActifTrueOrderByOrdreAsc(UUID editionId);
 
+    /** Pour l'écran admin de gestion des critères — inclut les critères désactivés. */
+    List<CritereNotation> findByEditionIdOrderByOrdreAsc(UUID editionId);
+
     @Query("SELECT c FROM CritereNotation c WHERE c.edition.id = (SELECT s.edition.id FROM SoireeEvent s WHERE s.id = :soireeId) AND c.actif = true ORDER BY c.ordre ASC")
     List<CritereNotation> findActiveBySoireeId(@Param("soireeId") UUID soireeId);
 }
