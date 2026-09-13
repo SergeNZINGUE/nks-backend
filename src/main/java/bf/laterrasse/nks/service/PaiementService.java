@@ -1,7 +1,6 @@
 package bf.laterrasse.nks.service;
 
 import bf.laterrasse.nks.config.PaymentProperties;
-import bf.laterrasse.nks.domain.LigdiCashCallback;
 import bf.laterrasse.nks.domain.Paiement;
 import bf.laterrasse.nks.domain.TransactionMobileMoney;
 import bf.laterrasse.nks.domain.Utilisateur;
@@ -17,14 +16,12 @@ import bf.laterrasse.nks.exception.ValidationMetierException;
 import bf.laterrasse.nks.gateway.payment.ConfirmationPaiement;
 import bf.laterrasse.nks.gateway.payment.InitiationPaiement;
 import bf.laterrasse.nks.gateway.payment.PaymentGateway;
-import bf.laterrasse.nks.repository.LigdiCashCallbackRepository;
 import bf.laterrasse.nks.repository.PaiementRepository;
 import bf.laterrasse.nks.repository.TransactionMobileMoneyRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,7 +49,7 @@ public class PaiementService {
 
     private final PaiementRepository paiementRepository;
     private final TransactionMobileMoneyRepository transactionRepository;
-    private final LigdiCashCallbackRepository callbackRepository;
+    private final CallbackDeduplicationService callbackDeduplication;
     private final PaymentGateway paymentGateway;
     private final PaymentProperties paymentProperties;
     private final ApplicationEventPublisher eventPublisher;
@@ -119,11 +116,17 @@ public class PaiementService {
             return;
         }
 
-        try {
-            callbackRepository.saveAndFlush(new LigdiCashCallback(token));
-        } catch (DataIntegrityViolationException e) {
-            log.info("Callback {} déjà enregistré — doublon ignoré (idempotence atomique)", token);
-            return;
+        boolean nouveauCallback = callbackDeduplication.tryEnregistrer(token);
+        if (!nouveauCallback) {
+            // Token déjà enregistré par un webhook précédent qui avait trouvé LigdiCash PENDING.
+            // Si le paiement est toujours PENDING, ce webhook est peut-être la confirmation réelle :
+            // on relit depuis la DB (état frais) et on retente confirmInvoice si nécessaire.
+            paiement = paiementRepository.findByReferenceExterne(token).orElse(null);
+            if (paiement == null || paiement.getStatut() != StatutPaiement.PENDING) {
+                log.info("Callback {} déjà enregistré, paiement non-PENDING — doublon ignoré", token);
+                return;
+            }
+            log.info("Callback {} doublon mais paiement encore PENDING — retentative confirmInvoice (webhook de confirmation tardive ?)", token);
         }
 
         traiterConfirmationToken(token, payload);
