@@ -1,5 +1,7 @@
 package bf.laterrasse.nks.controller;
 
+import bf.laterrasse.nks.domain.enums.Enums.StatutPaiement;
+import bf.laterrasse.nks.domain.enums.Enums.TypePaiement;
 import bf.laterrasse.nks.dto.paiement.InitierPaiementRequest;
 import bf.laterrasse.nks.dto.paiement.InitierPaiementResponse;
 import bf.laterrasse.nks.dto.paiement.PaiementResponse;
@@ -62,8 +64,20 @@ public class PaiementController {
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Transactional(readOnly = true)
-    public ResponseEntity<Page<PaiementResponse>> lister(Pageable pageable) {
-        Page<PaiementResponse> result = paiementRepository.findAll(pageable).map(PaiementResponse::from);
+    public ResponseEntity<Page<PaiementResponse>> lister(
+            @RequestParam(required = false) TypePaiement typePaiement,
+            @RequestParam(required = false) StatutPaiement statut,
+            Pageable pageable) {
+        Page<PaiementResponse> result;
+        if (typePaiement != null && statut != null) {
+            result = paiementRepository.findByTypePaiementAndStatut(typePaiement, statut, pageable).map(PaiementResponse::from);
+        } else if (typePaiement != null) {
+            result = paiementRepository.findByTypePaiement(typePaiement, pageable).map(PaiementResponse::from);
+        } else if (statut != null) {
+            result = paiementRepository.findByStatut(statut, pageable).map(PaiementResponse::from);
+        } else {
+            result = paiementRepository.findAll(pageable).map(PaiementResponse::from);
+        }
         return ResponseEntity.ok(result);
     }
 

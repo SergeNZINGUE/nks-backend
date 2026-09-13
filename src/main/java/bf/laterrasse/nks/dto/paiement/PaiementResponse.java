@@ -9,6 +9,9 @@ import java.util.UUID;
 public record PaiementResponse(
         UUID id,
         UUID utilisateurId,
+        String prenomCandidat,
+        String nomCandidat,
+        String emailCandidat,
         String typePaiement,
         BigDecimal montant,
         String statut,
@@ -18,9 +21,13 @@ public record PaiementResponse(
         boolean manuel
 ) {
     public static PaiementResponse from(Paiement p) {
+        var u = p.getUtilisateur();
         return new PaiementResponse(
                 p.getId(),
-                p.getUtilisateur() != null ? p.getUtilisateur().getId() : null,
+                u != null ? u.getId() : null,
+                u != null ? u.getPrenom() : null,
+                u != null ? u.getNom() : null,
+                u != null ? u.getEmail() : null,
                 p.getTypePaiement().name(),
                 p.getMontant(),
                 p.getStatut().name(),

@@ -2,6 +2,7 @@ package bf.laterrasse.nks.repository;
 
 import bf.laterrasse.nks.domain.Paiement;
 import bf.laterrasse.nks.domain.enums.Enums.StatutPaiement;
+import bf.laterrasse.nks.domain.enums.Enums.TypePaiement;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import jakarta.persistence.LockModeType;
@@ -23,6 +24,8 @@ public interface PaiementRepository extends JpaRepository<Paiement, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Paiement> findByReferenceExterneForUpdate(@Param("token") String token);
     Page<Paiement> findByStatut(StatutPaiement statut, Pageable pageable);
+    Page<Paiement> findByTypePaiement(TypePaiement type, Pageable pageable);
+    Page<Paiement> findByTypePaiementAndStatut(TypePaiement type, StatutPaiement statut, Pageable pageable);
 
     /** Paiements PENDING éligibles au polling : créés avant :seuil, tentatives < :max, non expirés. */
     @Query("SELECT p FROM Paiement p WHERE p.statut = 'PENDING' AND p.dateCreation < :seuil AND p.nbTentativesPolling < :maxTentatives")
