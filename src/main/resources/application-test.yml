@@ -9,3 +9,7 @@ spring:
 nks:
   payment:
     provider: fake
+  sms:
+    # Empty on purpose: keeps WhatsappGateway in simulated mode (see HdrStreamWhatsappGateway)
+    # so integration tests never attempt a real network call to HDR Stream.
+    whatsapp-url: ""

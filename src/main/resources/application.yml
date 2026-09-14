@@ -54,6 +54,12 @@ nks:
     access-token-expiration-minutes: 60
     refresh-token-expiration-days: 7
 
+  ticket-access:
+    # Secret HMAC dédié aux jetons d'accès billets (correctif audit IDOR billetterie) —
+    # totalement distinct du JWT staff (nks.jwt) : ne jamais réutiliser la même valeur.
+    # Obligatoire en production. Générer via `openssl rand -hex 32`.
+    secret: ${TICKET_ACCESS_SECRET:}
+
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:4200}  # dev uniquement — FRONTEND_BASE_URL obligatoire en homol/prod

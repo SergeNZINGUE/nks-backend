@@ -20,6 +20,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.util.List;
 
@@ -53,6 +54,7 @@ public class SecurityConfig {
             "/auth/**", "/webhooks/**", "/candidatures", "/medias/url-upload", "/videos/url-upload",
             "/medias/*/confirmer", "/videos/*/confirmer", "/votes/initier",
             "/reservations/initier", "/reservations/mes-tickets", "/reservations/*/ticket",
+            "/reservations/mes-tickets/otp/**",
             "/vote-sur-place/**"
     };
 
@@ -60,6 +62,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable()) // API stateless consommée par un frontend séparé (pas de cookies de session)
+                .addFilterBefore(privateNetworkAccessFilter(), org.springframework.web.filter.CorsFilter.class)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
@@ -78,12 +81,36 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(allowedOrigins.split(",")));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Ticket-Access-Token"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    /**
+     * Private Network Access (PNA) — Spring Framework 6.1 (Boot 3.3) n'a pas encore
+     * `CorsConfiguration.setAllowPrivateNetwork` (ajouté en 6.2/Boot 3.4), donc on répond
+     * nous-mêmes au header de préflight `Access-Control-Request-Private-Network`. Ne couvre
+     * que l'ancien mécanisme basé sur un header CORS — le mécanisme plus récent de certains
+     * navigateurs (permission utilisateur explicite, type caméra/micro) n'est pas contournable
+     * côté serveur, quel que soit ce qu'on renvoie ici.
+     */
+    @Bean
+    public OncePerRequestFilter privateNetworkAccessFilter() {
+        return new OncePerRequestFilter() {
+            @Override
+            protected void doFilterInternal(jakarta.servlet.http.HttpServletRequest request,
+                                             jakarta.servlet.http.HttpServletResponse response,
+                                             jakarta.servlet.FilterChain chain)
+                    throws jakarta.servlet.ServletException, java.io.IOException {
+                if ("true".equalsIgnoreCase(request.getHeader("Access-Control-Request-Private-Network"))) {
+                    response.setHeader("Access-Control-Allow-Private-Network", "true");
+                }
+                chain.doFilter(request, response);
+            }
+        };
     }
 
     @Bean
