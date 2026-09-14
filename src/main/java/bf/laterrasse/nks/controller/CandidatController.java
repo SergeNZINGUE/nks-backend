@@ -1,6 +1,7 @@
 package bf.laterrasse.nks.controller;
 
 import bf.laterrasse.nks.domain.Candidat;
+import bf.laterrasse.nks.domain.Utilisateur;
 import bf.laterrasse.nks.domain.enums.Enums.StatutProfilCandidat;
 import bf.laterrasse.nks.dto.candidat.CandidatPublicResponse;
 import bf.laterrasse.nks.dto.candidat.MettreAJourProfilRequest;
@@ -8,9 +9,13 @@ import bf.laterrasse.nks.dto.classement.ResultatPhaseResponse;
 import bf.laterrasse.nks.dto.titre.ChoisirTitreRequest;
 import bf.laterrasse.nks.dto.titre.ChoixTitreResponse;
 import bf.laterrasse.nks.dto.titre.MonChoixTitreResponse;
+import bf.laterrasse.nks.exception.ConflitEtatException;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
+import bf.laterrasse.nks.exception.ValidationMetierException;
+import bf.laterrasse.nks.gateway.sms.SmsGateway;
 import bf.laterrasse.nks.repository.CandidatRepository;
 import bf.laterrasse.nks.repository.ResultatPhaseRepository;
+import bf.laterrasse.nks.repository.UtilisateurRepository;
 import bf.laterrasse.nks.security.CurrentUserProvider;
 import bf.laterrasse.nks.service.ChoixTitreService;
 import jakarta.validation.Valid;
@@ -33,8 +38,12 @@ public class CandidatController {
 
     private final CandidatRepository candidatRepository;
     private final ResultatPhaseRepository resultatPhaseRepository;
+    private final UtilisateurRepository utilisateurRepository;
     private final CurrentUserProvider currentUserProvider;
     private final ChoixTitreService choixTitreService;
+
+    private static final java.util.regex.Pattern EMAIL_PATTERN =
+            java.util.regex.Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     @GetMapping
     @Transactional(readOnly = true)
@@ -73,6 +82,13 @@ public class CandidatController {
         return ResponseEntity.ok(result);
     }
 
+    /**
+     * Édition admin du profil candidat. `biographie`/`chansonPreselection` restent
+     * optionnels (édition partielle historique) ; `prenom`/`nom`/`email`/`telephone`
+     * portent sur {@code Utilisateur} (pas {@code Candidat}) — cf. mapping utilisateur_id.
+     * `email`/`telephone` sont soumis à une contrainte UNIQUE en base : vérifiés ici pour
+     * renvoyer une erreur métier claire plutôt qu'une violation de contrainte brute.
+     */
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Transactional
@@ -82,6 +98,37 @@ public class CandidatController {
                 .orElseThrow(() -> new ResourceNotFoundException("Candidat introuvable"));
         if (body.get("biographie") instanceof String bio) candidat.setBiographie(bio);
         if (body.get("chansonPreselection") instanceof String chanson) candidat.setChansonPreselection(chanson);
+
+        Utilisateur utilisateur = candidat.getUtilisateur();
+        if (body.get("prenom") instanceof String prenom) {
+            if (prenom.isBlank()) throw new ValidationMetierException("Le prénom ne peut pas être vide");
+            utilisateur.setPrenom(prenom.trim());
+        }
+        if (body.get("nom") instanceof String nom) {
+            if (nom.isBlank()) throw new ValidationMetierException("Le nom ne peut pas être vide");
+            utilisateur.setNom(nom.trim());
+        }
+        if (body.get("email") instanceof String email) {
+            String emailNormalise = email.trim();
+            if (!EMAIL_PATTERN.matcher(emailNormalise).matches()) {
+                throw new ValidationMetierException("Adresse e-mail invalide");
+            }
+            if (!emailNormalise.equalsIgnoreCase(utilisateur.getEmail())
+                    && utilisateurRepository.existsByEmailIgnoreCase(emailNormalise)) {
+                throw new ValidationMetierException("Cet e-mail est déjà utilisé par un autre compte");
+            }
+            utilisateur.setEmail(emailNormalise);
+        }
+        if (body.get("telephone") instanceof String telephone) {
+            if (telephone.isBlank()) throw new ValidationMetierException("Le téléphone ne peut pas être vide");
+            String telephoneNormalise = SmsGateway.normaliserTelephone(telephone.trim());
+            if (!telephoneNormalise.equals(utilisateur.getTelephone())
+                    && utilisateurRepository.existsByTelephone(telephoneNormalise)) {
+                throw new ValidationMetierException("Ce téléphone est déjà utilisé par un autre compte");
+            }
+            utilisateur.setTelephone(telephoneNormalise);
+        }
+        utilisateurRepository.save(utilisateur);
         return ResponseEntity.ok(CandidatPublicResponse.from(candidatRepository.save(candidat)));
     }
 
