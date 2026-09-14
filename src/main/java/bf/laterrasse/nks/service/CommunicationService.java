@@ -34,6 +34,10 @@ public class CommunicationService {
     private static final Logger log = LoggerFactory.getLogger(CommunicationService.class);
 
     public Map<String, Object> envoyerGroupe(CommunicationRequest request) {
+        if ((request.canalSms() || request.canalEmail()) && (request.message() == null || request.message().isBlank())) {
+            throw new ValidationMetierException("Le message est requis pour SMS/e-mail");
+        }
+
         if (request.canalSms() && request.message().length() > 160) {
             throw new ValidationMetierException("Le message SMS est limité à 160 caractères");
         }

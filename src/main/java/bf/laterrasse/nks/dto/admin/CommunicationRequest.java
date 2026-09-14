@@ -1,7 +1,6 @@
 package bf.laterrasse.nks.dto.admin;
 
 import bf.laterrasse.nks.domain.enums.Enums.StatutProfilCandidat;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
@@ -14,7 +13,7 @@ public record CommunicationRequest(
         boolean canalSms,
         boolean canalEmail,
         boolean canalWhatsapp,
-        @NotBlank String message,            // SMS : max 160 caractères / e-mail : libre
+        String message,                      // SMS : max 160 caractères / e-mail : libre
         String sujetEmail,
         String templateWhatsapp,             // clé Meta (ex: "karaoke_info") — null si canalWhatsapp=false
         List<String> variablesWhatsapp       // variables du template dans l'ordre — null ou vide pour karaoke_accepted
