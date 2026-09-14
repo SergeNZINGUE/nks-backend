@@ -95,7 +95,7 @@ public final class Enums {
     }
 
     public enum StatutTicket {
-        EMIS, ANNULE, UTILISE
+        EMIS, ANNULE, UTILISE, EXPIRE
     }
 
     public enum ResultatScan {
@@ -112,7 +112,7 @@ public final class Enums {
     }
 
     public enum CanalNotification {
-        SMS, EMAIL, IN_APP
+        SMS, EMAIL, IN_APP, WHATSAPP
     }
 
     public enum StatutEnvoiNotification {
@@ -121,7 +121,8 @@ public final class Enums {
 
     public enum TypeNotification {
         CANDIDATURE_RECUE, CANDIDATURE_VALIDEE, CANDIDATURE_REJETEE, PAIEMENT_CONFIRME,
-        PAIEMENT_ECHOUE, CONVOCATION, RESULTAT_PHASE, REPECHAGE, BILLET_EMIS, PROFIL_ACTIVE
+        PAIEMENT_ECHOUE, CONVOCATION, RESULTAT_PHASE, REPECHAGE, BILLET_EMIS, PROFIL_ACTIVE,
+        OTP_VERIFICATION
     }
 
     public enum TypeValeurParametre {
