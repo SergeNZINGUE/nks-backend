@@ -37,7 +37,7 @@ public class CandidatureController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     @Transactional(readOnly = true)
     public ResponseEntity<Page<CandidatureDetailResponse>> lister(
             @RequestParam(required = false) StatutCandidature statut, Pageable pageable) {
@@ -48,7 +48,7 @@ public class CandidatureController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     @Transactional(readOnly = true)
     public ResponseEntity<CandidatureDetailResponse> detail(@PathVariable UUID id) {
         Candidature candidature = candidatureRepository.findById(id)
