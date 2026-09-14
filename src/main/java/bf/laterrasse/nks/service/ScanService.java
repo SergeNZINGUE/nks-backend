@@ -59,7 +59,7 @@ public class ScanService {
                     premierScan.map(ScanTicket::getTimestampScan).orElse(null));
         }
 
-        if (ticket.getStatut() == StatutTicket.ANNULE) {
+        if (ticket.getStatut() == StatutTicket.ANNULE || ticket.getStatut() == StatutTicket.EXPIRE) {
             enregistrerScan(qr, soiree, agent, ResultatScan.INVALIDE, ipAgent, deviceInfo);
             return new ScanResponse(ResultatScan.INVALIDE.name(), null, null, null);
         }

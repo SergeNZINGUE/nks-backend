@@ -1,6 +1,7 @@
 package bf.laterrasse.nks.domain;
 
 import bf.laterrasse.nks.domain.enums.Enums.NomCategorieTicket;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -22,6 +23,12 @@ public class CategorieTicket {
     @Column(columnDefinition = "uuid")
     private UUID id;
 
+    /**
+     * WRITE_ONLY : accepté en entrée (POST /admin/billetterie/categories envoie {"soiree":{"id":...}})
+     * mais jamais sérialisé en sortie — relation LAZY, spring.jpa.open-in-view=false, la session
+     * Hibernate est fermée avant l'écriture JSON de la réponse (LazyInitializationException sinon).
+     */
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "soiree_id", nullable = false)
     private SoireeEvent soiree;

@@ -92,6 +92,19 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
+        <!-- Génération QR code côté serveur — pièce jointe des e-mails de billets uniquement
+             (jamais exposé via une API interrogeable, cf. BilletterieService.genererTickets) -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+
         <!-- HTTP client for external gateways (LigdiCash, Africa's Talking, Cloudinary, Facebook/TikTok) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
