@@ -105,7 +105,7 @@ public class VoteSurPlaceService {
         ScanResponse scan = scanService.scanner(qrUuid, soireeId, hotesse, ipHotesse, deviceInfo);
         if (ResultatScan.INVALIDE.name().equals(scan.resultat())) {
             throw new ValidationMetierException(
-                    "Billet invalide, introuvable, annulé ou n'appartenant pas à cette soirée");
+                    scan.motif() != null ? scan.motif() : "Billet invalide.");
         }
         // VALIDE (premier scan à l'instant) ou DEJA_UTILISE (déjà entré / service précédent) :
         // dans les deux cas, le billet est maintenant garanti UTILISE — on peut continuer.
@@ -341,14 +341,15 @@ public class VoteSurPlaceService {
     }
 
     private Ticket resoudreTicket(UUID qrUuid, UUID soireeId) {
-        soireeEventRepository.findById(soireeId)
+        SoireeEvent soireeDemandee = soireeEventRepository.findById(soireeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Soirée introuvable"));
 
         QRCodeTicket qr = qrCodeTicketRepository.findByCodeUuid(qrUuid)
                 .orElseThrow(() -> new ResourceNotFoundException("Billet introuvable"));
         Ticket ticket = qr.getTicket();
         if (!ticket.getSoiree().getId().equals(soireeId)) {
-            throw new ValidationMetierException("Ce billet n'appartient pas à cette soirée");
+            throw new ValidationMetierException("Ce billet a été acheté pour la soirée « "
+                    + ticket.getSoiree().getNom() + " », pas pour « " + soireeDemandee.getNom() + " ».");
         }
         return ticket;
     }

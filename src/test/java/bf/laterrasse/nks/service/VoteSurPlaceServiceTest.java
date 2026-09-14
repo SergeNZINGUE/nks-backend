@@ -156,7 +156,7 @@ class VoteSurPlaceServiceTest {
         Ticket ticket = ticketPourSoiree(soiree);
 
         when(scanService.scanner(any(), any(), any(), any(), any()))
-                .thenReturn(new ScanResponse(ResultatScan.DEJA_UTILISE.name(), ticket.getNomSpectateur(), 1, null));
+                .thenReturn(new ScanResponse(ResultatScan.DEJA_UTILISE.name(), ticket.getNomSpectateur(), 1, null, null));
         stubResolutionTicket(soiree, ticket);
         when(droitVoteSurPlaceRepository.existsByTicketIdAndTypeDroit(ticketId, TypeDroitVote.BASE)).thenReturn(true);
 
