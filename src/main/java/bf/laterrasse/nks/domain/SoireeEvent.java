@@ -60,4 +60,13 @@ public class SoireeEvent {
     @Column(name = "resultats_publies", nullable = false)
     @Builder.Default
     private boolean resultatsPublies = false;
+
+    /** Seuil de consommations supplémentaires pour débloquer un vote bonus. Null ou <= 0 =
+     * fonctionnalité désactivée pour cette soirée — cf. VoteSurPlaceService#ajouterConsommationBonus. */
+    @Column(name = "nb_consommations_pour_vote_bonus")
+    private Short nbConsommationsPourVoteBonus;
+
+    /** Plafond de votes bonus par billet pour cette soirée. Null = pas de plafond. */
+    @Column(name = "plafond_votes_bonus")
+    private Short plafondVotesBonus;
 }

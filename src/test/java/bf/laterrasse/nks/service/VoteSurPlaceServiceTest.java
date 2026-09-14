@@ -9,8 +9,11 @@ import bf.laterrasse.nks.domain.SoireeEvent;
 import bf.laterrasse.nks.domain.Ticket;
 import bf.laterrasse.nks.domain.enums.Enums.ResultatScan;
 import bf.laterrasse.nks.domain.enums.Enums.StatutDroitVote;
+import bf.laterrasse.nks.domain.enums.Enums.StatutTicket;
+import bf.laterrasse.nks.domain.enums.Enums.TypeDroitVote;
 import bf.laterrasse.nks.dto.scan.ScanResponse;
 import bf.laterrasse.nks.exception.ConflitEtatException;
+import bf.laterrasse.nks.exception.ValidationMetierException;
 import bf.laterrasse.nks.gateway.sms.WhatsappGateway;
 import bf.laterrasse.nks.repository.AffectationPouleRepository;
 import bf.laterrasse.nks.repository.CandidatRepository;
@@ -18,6 +21,7 @@ import bf.laterrasse.nks.repository.DroitVoteSurPlaceRepository;
 import bf.laterrasse.nks.repository.DuoRepository;
 import bf.laterrasse.nks.repository.QRCodeTicketRepository;
 import bf.laterrasse.nks.repository.SoireeEventRepository;
+import bf.laterrasse.nks.repository.TicketRepository;
 import bf.laterrasse.nks.repository.VoteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -59,6 +63,7 @@ class VoteSurPlaceServiceTest {
     @Mock private DuoRepository duoRepository;
     @Mock private WhatsappGateway whatsappGateway;
     @Mock private ScanService scanService;
+    @Mock private TicketRepository ticketRepository;
 
     private VoteSurPlaceService service;
 
@@ -70,7 +75,7 @@ class VoteSurPlaceServiceTest {
     void setUp() {
         service = new VoteSurPlaceService(qrCodeTicketRepository, droitVoteSurPlaceRepository,
                 soireeEventRepository, candidatRepository, voteRepository, affectationPouleRepository,
-                duoRepository, whatsappGateway, scanService);
+                duoRepository, whatsappGateway, scanService, ticketRepository);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:4200");
     }
 
@@ -92,22 +97,17 @@ class VoteSurPlaceServiceTest {
     }
 
     @Test
-    @DisplayName("voter() on an already UTILISE droit throws ConflitEtatException and creates no second Vote")
-    void voter_droitDejaUtilise_lanceConflitEtatException_sansCreerDeuxiemeVote() {
+    @DisplayName("voter() with no droit DISPONIBLE throws ConflitEtatException and creates no Vote")
+    void voter_aucunDroitDisponible_lanceConflitEtatException_sansCreerDeVote() {
         SoireeEvent soiree = soiree();
         Ticket ticket = ticketPourSoiree(soiree);
         stubResolutionTicket(soiree, ticket);
 
-        DroitVoteSurPlace droitDejaUtilise = DroitVoteSurPlace.builder()
-                .id(UUID.randomUUID()).ticket(ticket).soiree(soiree)
-                .statut(StatutDroitVote.UTILISE)
-                .candidat(Candidat.builder().id(UUID.randomUUID()).build())
-                .build();
-        when(droitVoteSurPlaceRepository.findByTicketIdForUpdate(ticketId)).thenReturn(Optional.of(droitDejaUtilise));
+        when(droitVoteSurPlaceRepository.findDisponiblesByTicketIdForUpdate(ticketId)).thenReturn(List.of());
 
         assertThatThrownBy(() -> service.voter(qrUuid, soireeId, UUID.randomUUID(), null, null, null, null))
                 .isInstanceOf(ConflitEtatException.class)
-                .hasMessageContaining("Ce billet a");
+                .hasMessageContaining("déjà utilisé tous tes votes");
 
         verify(voteRepository, never()).save(any());
         verify(droitVoteSurPlaceRepository, never()).save(any());
@@ -124,7 +124,8 @@ class VoteSurPlaceServiceTest {
                 .id(UUID.randomUUID()).ticket(ticket).soiree(soiree)
                 .statut(StatutDroitVote.DISPONIBLE)
                 .build();
-        when(droitVoteSurPlaceRepository.findByTicketIdForUpdate(ticketId)).thenReturn(Optional.of(droitDisponible));
+        when(droitVoteSurPlaceRepository.findDisponiblesByTicketIdForUpdate(ticketId)).thenReturn(List.of(droitDisponible));
+        when(droitVoteSurPlaceRepository.findByTicketIdOrderByDateEmissionAsc(ticketId)).thenReturn(List.of(droitDisponible));
 
         UUID candidatId = UUID.randomUUID();
         Candidat candidat = Candidat.builder().id(candidatId).build();
@@ -149,7 +150,7 @@ class VoteSurPlaceServiceTest {
     }
 
     @Test
-    @DisplayName("validerConsommation() refuses a second droit for a ticket that already has one")
+    @DisplayName("validerConsommation() refuses a second droit BASE for a ticket that already has one")
     void validerConsommation_billetADejaUnDroit_lanceConflitEtatException() {
         SoireeEvent soiree = soiree();
         Ticket ticket = ticketPourSoiree(soiree);
@@ -157,12 +158,133 @@ class VoteSurPlaceServiceTest {
         when(scanService.scanner(any(), any(), any(), any(), any()))
                 .thenReturn(new ScanResponse(ResultatScan.DEJA_UTILISE.name(), ticket.getNomSpectateur(), 1, null));
         stubResolutionTicket(soiree, ticket);
-        when(droitVoteSurPlaceRepository.existsByTicketId(ticketId)).thenReturn(true);
+        when(droitVoteSurPlaceRepository.existsByTicketIdAndTypeDroit(ticketId, TypeDroitVote.BASE)).thenReturn(true);
 
         assertThatThrownBy(() -> service.validerConsommation(qrUuid, soireeId, null, "127.0.0.1", "device"))
                 .isInstanceOf(ConflitEtatException.class)
                 .hasMessageContaining("Ce billet a");
 
         verify(droitVoteSurPlaceRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("ajouterConsommationBonus() refuses a ticket not yet UTILISE (entrée non validée)")
+    void ajouterConsommationBonus_billetNonUtilise_lanceValidationMetierException() {
+        SoireeEvent soiree = soiree();
+        Ticket ticket = ticketPourSoiree(soiree);
+        ticket.setStatut(StatutTicket.EMIS);
+        stubResolutionTicket(soiree, ticket);
+
+        assertThatThrownBy(() -> service.ajouterConsommationBonus(qrUuid, soireeId, null))
+                .isInstanceOf(ValidationMetierException.class)
+                .hasMessageContaining("validé à l'entrée");
+
+        verify(ticketRepository, never()).findByIdForUpdate(any());
+    }
+
+    @Test
+    @DisplayName("ajouterConsommationBonus() refuses when the soirée has no threshold configured")
+    void ajouterConsommationBonus_seuilNonConfigure_lanceValidationMetierException() {
+        SoireeEvent soiree = soiree();
+        Ticket ticket = ticketPourSoiree(soiree);
+        ticket.setStatut(StatutTicket.UTILISE);
+        stubResolutionTicket(soiree, ticket);
+
+        assertThatThrownBy(() -> service.ajouterConsommationBonus(qrUuid, soireeId, null))
+                .isInstanceOf(ValidationMetierException.class)
+                .hasMessageContaining("pas activés");
+
+        verify(ticketRepository, never()).findByIdForUpdate(any());
+    }
+
+    @Test
+    @DisplayName("ajouterConsommationBonus() unlocks exactly one bonus droit when the 3rd extra consommation is reached (seuil=3, plafond=5)")
+    void ajouterConsommationBonus_troisiemeConsommation_debloqueUnVoteBonus() {
+        SoireeEvent soiree = soiree();
+        soiree.setNbConsommationsPourVoteBonus((short) 3);
+        soiree.setPlafondVotesBonus((short) 5);
+        Ticket ticket = ticketPourSoiree(soiree);
+        ticket.setStatut(StatutTicket.UTILISE);
+        ticket.setNbConsommationsSupplementaires((short) 2);
+        stubResolutionTicket(soiree, ticket);
+
+        when(ticketRepository.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(droitVoteSurPlaceRepository.countByTicketIdAndTypeDroit(ticketId, TypeDroitVote.BONUS)).thenReturn(0L);
+        when(droitVoteSurPlaceRepository.save(any(DroitVoteSurPlace.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        DroitVoteSurPlace droitBase = DroitVoteSurPlace.builder()
+                .id(UUID.randomUUID()).ticket(ticket).soiree(soiree).statut(StatutDroitVote.DISPONIBLE)
+                .typeDroit(TypeDroitVote.BASE).build();
+        DroitVoteSurPlace droitBonus = DroitVoteSurPlace.builder()
+                .id(UUID.randomUUID()).ticket(ticket).soiree(soiree).statut(StatutDroitVote.DISPONIBLE)
+                .typeDroit(TypeDroitVote.BONUS).build();
+        when(droitVoteSurPlaceRepository.findByTicketIdOrderByDateEmissionAsc(ticketId))
+                .thenReturn(List.of(droitBase, droitBonus));
+
+        var reponse = service.ajouterConsommationBonus(qrUuid, soireeId, null);
+
+        assertThat(reponse.nbConsommationsSupplementaires()).isEqualTo(3);
+        assertThat(reponse.seuil()).isEqualTo(3);
+        assertThat(reponse.plafond()).isEqualTo(5);
+        assertThat(reponse.nouveauVoteDebloque()).isTrue();
+        assertThat(reponse.nbVotesBonusDebloquesAuTotal()).isEqualTo(1);
+        assertThat(reponse.nbVotesDisponiblesTotal()).isEqualTo(2);
+
+        ArgumentCaptor<DroitVoteSurPlace> captor = ArgumentCaptor.forClass(DroitVoteSurPlace.class);
+        verify(droitVoteSurPlaceRepository).save(captor.capture());
+        assertThat(captor.getValue().getTypeDroit()).isEqualTo(TypeDroitVote.BONUS);
+        verify(whatsappGateway).envoyer(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("ajouterConsommationBonus() does not unlock a new droit nor send a notification between thresholds")
+    void ajouterConsommationBonus_entreDeuxPaliers_neDebloqueRienEtNeNotifiePas() {
+        SoireeEvent soiree = soiree();
+        soiree.setNbConsommationsPourVoteBonus((short) 3);
+        soiree.setPlafondVotesBonus((short) 5);
+        Ticket ticket = ticketPourSoiree(soiree);
+        ticket.setStatut(StatutTicket.UTILISE);
+        ticket.setNbConsommationsSupplementaires((short) 0);
+        stubResolutionTicket(soiree, ticket);
+
+        when(ticketRepository.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(droitVoteSurPlaceRepository.countByTicketIdAndTypeDroit(ticketId, TypeDroitVote.BONUS)).thenReturn(0L);
+        when(droitVoteSurPlaceRepository.findByTicketIdOrderByDateEmissionAsc(ticketId)).thenReturn(List.of());
+
+        var reponse = service.ajouterConsommationBonus(qrUuid, soireeId, null);
+
+        assertThat(reponse.nbConsommationsSupplementaires()).isEqualTo(1);
+        assertThat(reponse.nouveauVoteDebloque()).isFalse();
+        assertThat(reponse.nbVotesBonusDebloquesAuTotal()).isEqualTo(0);
+
+        verify(droitVoteSurPlaceRepository, never()).save(any());
+        verify(whatsappGateway, never()).envoyer(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("ajouterConsommationBonus() caps unlocked bonus votes at plafond even past the threshold multiple")
+    void ajouterConsommationBonus_depassePlafond_capteLeNombreDeVotesBonus() {
+        SoireeEvent soiree = soiree();
+        soiree.setNbConsommationsPourVoteBonus((short) 3);
+        soiree.setPlafondVotesBonus((short) 5);
+        Ticket ticket = ticketPourSoiree(soiree);
+        ticket.setStatut(StatutTicket.UTILISE);
+        ticket.setNbConsommationsSupplementaires((short) 17); // -> 18 after increment, 18/3=6 > plafond 5
+        stubResolutionTicket(soiree, ticket);
+
+        when(ticketRepository.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(droitVoteSurPlaceRepository.countByTicketIdAndTypeDroit(ticketId, TypeDroitVote.BONUS)).thenReturn(4L);
+        when(droitVoteSurPlaceRepository.save(any(DroitVoteSurPlace.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(droitVoteSurPlaceRepository.findByTicketIdOrderByDateEmissionAsc(ticketId)).thenReturn(List.of());
+
+        var reponse = service.ajouterConsommationBonus(qrUuid, soireeId, null);
+
+        assertThat(reponse.nbVotesBonusDebloquesAuTotal()).isEqualTo(5);
+        assertThat(reponse.nouveauVoteDebloque()).isTrue();
+        verify(droitVoteSurPlaceRepository, org.mockito.Mockito.times(1)).save(any());
     }
 }

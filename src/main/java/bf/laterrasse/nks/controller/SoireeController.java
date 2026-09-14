@@ -68,6 +68,8 @@ public class SoireeController {
         soiree.setCapaciteMax(modif.getCapaciteMax());
         soiree.setStatut(modif.getStatut());
         soiree.setVoteSurPlaceActif(modif.isVoteSurPlaceActif());
+        soiree.setNbConsommationsPourVoteBonus(modif.getNbConsommationsPourVoteBonus());
+        soiree.setPlafondVotesBonus(modif.getPlafondVotesBonus());
         SoireeEvent sauvegardee = soireeEventRepository.save(soiree);
 
         // Clôture de soirée : les billets EMIS jamais scannés expirent (demande client). On ne

@@ -153,7 +153,8 @@ class VoteSurPlaceConcurrencyTest extends AbstractIntegrationTest {
         assertThat(echecsAttendus).isEqualTo(1);
         assertThat(voteRepository.findByPhaseId(phase.getId())).hasSize(1);
 
-        DroitVoteSurPlace droitFinal = droitVoteSurPlaceRepository.findByTicketId(qr.getTicket().getId()).orElseThrow();
+        DroitVoteSurPlace droitFinal = droitVoteSurPlaceRepository
+                .findByTicketIdOrderByDateEmissionAsc(qr.getTicket().getId()).get(0);
         assertThat(droitFinal.getStatut()).isEqualTo(StatutDroitVote.UTILISE);
     }
 

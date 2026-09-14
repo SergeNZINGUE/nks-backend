@@ -1,6 +1,7 @@
 package bf.laterrasse.nks.controller;
 
 import bf.laterrasse.nks.dto.votesurplace.CaisseValiderRequest;
+import bf.laterrasse.nks.dto.votesurplace.ConsommationBonusResponse;
 import bf.laterrasse.nks.dto.votesurplace.DroitVoteResponse;
 import bf.laterrasse.nks.security.CurrentUserProvider;
 import bf.laterrasse.nks.service.VoteSurPlaceService;
@@ -36,5 +37,20 @@ public class CaisseController {
                 request.qrUuid(), request.soireeId(), hotesse,
                 httpRequest.getRemoteAddr(), httpRequest.getHeader("User-Agent"));
         return ResponseEntity.status(201).body(response);
+    }
+
+    /**
+     * Bouton dédié "Ajouter une consommation" — distinct de l'activation d'entrée ci-dessus :
+     * l'hôtesse scanne le même QR du billet à chaque commande supplémentaire au bar. Ne
+     * débloque un vote bonus (et une notification WhatsApp) que par palier, cf.
+     * VoteSurPlaceService#ajouterConsommationBonus.
+     */
+    @PostMapping("/caisse/consommations-bonus")
+    @PreAuthorize("hasAnyRole('HOTESSE','ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ConsommationBonusResponse> ajouterConsommationBonus(
+            @Valid @RequestBody CaisseValiderRequest request) {
+        var hotesse = currentUserProvider.getCurrentUser();
+        return ResponseEntity.ok(
+                voteSurPlaceService.ajouterConsommationBonus(request.qrUuid(), request.soireeId(), hotesse));
     }
 }

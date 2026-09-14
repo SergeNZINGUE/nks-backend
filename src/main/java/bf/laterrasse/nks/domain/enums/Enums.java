@@ -111,6 +111,17 @@ public final class Enums {
         DISPONIBLE, UTILISE
     }
 
+    /**
+     * Type d'un droit de vote sur place : BASE = droit offert à la première consommation
+     * validée (unique par billet, garantie anti-fraude imbattable — cf. index partiel
+     * ux_droits_vote_sur_place_ticket_base, V20). BONUS = droit supplémentaire débloqué par
+     * palier de consommations réelles au bar (plusieurs possibles par billet, cf.
+     * VoteSurPlaceService#ajouterConsommationBonus).
+     */
+    public enum TypeDroitVote {
+        BASE, BONUS
+    }
+
     public enum CanalNotification {
         SMS, EMAIL, IN_APP, WHATSAPP
     }

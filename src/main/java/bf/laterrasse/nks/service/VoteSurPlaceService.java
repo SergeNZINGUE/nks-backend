@@ -11,8 +11,11 @@ import bf.laterrasse.nks.domain.Utilisateur;
 import bf.laterrasse.nks.domain.Vote;
 import bf.laterrasse.nks.domain.enums.Enums.ResultatScan;
 import bf.laterrasse.nks.domain.enums.Enums.StatutDroitVote;
+import bf.laterrasse.nks.domain.enums.Enums.StatutTicket;
+import bf.laterrasse.nks.domain.enums.Enums.TypeDroitVote;
 import bf.laterrasse.nks.domain.enums.Enums.TypeVote;
 import bf.laterrasse.nks.dto.scan.ScanResponse;
+import bf.laterrasse.nks.dto.votesurplace.ConsommationBonusResponse;
 import bf.laterrasse.nks.dto.votesurplace.DroitVoteResponse;
 import bf.laterrasse.nks.dto.votesurplace.ReconciliationVoteResponse;
 import bf.laterrasse.nks.exception.ConflitEtatException;
@@ -26,6 +29,7 @@ import bf.laterrasse.nks.repository.DroitVoteSurPlaceRepository;
 import bf.laterrasse.nks.repository.DuoRepository;
 import bf.laterrasse.nks.repository.QRCodeTicketRepository;
 import bf.laterrasse.nks.repository.SoireeEventRepository;
+import bf.laterrasse.nks.repository.TicketRepository;
 import bf.laterrasse.nks.repository.VoteRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,18 +56,24 @@ import java.util.stream.Stream;
  *    le QR code, compteur d'entrées inchangé) : si le billet n'était pas encore scanné, il
  *    l'est à cet instant ; s'il l'était déjà (service suivant de la même soirée), l'appel est
  *    sans effet — dans les deux cas on obtient un billet garanti UTILISE avant de continuer.
- * 2) Une fois le billet garanti UTILISE, un DroitVoteSurPlace(DISPONIBLE) est créé pour ce
- *    billet. Contrainte UNIQUE sur ticket_id : impossible d'en émettre deux pour le même
- *    billet, même en rejouant l'opération à chaque service suivant (l'hôtesse reçoit
- *    simplement un message « déjà activé »).
- * 3) Le client exprime ce droit une seule fois via /vote-sur-place (public, aucune
- *    authentification requise — seule la connaissance du qrUuid, déjà le modèle de
- *    confiance du QR billet lui-même, y donne accès). Verrou pessimiste sur la ligne du
- *    droit de vote pendant la validation, pour empêcher deux tentatives concurrentes.
+ * 2) Une fois le billet garanti UTILISE, un DroitVoteSurPlace(BASE, DISPONIBLE) est créé pour
+ *    ce billet. Index unique partiel sur ticket_id (type_droit = 'BASE', cf. V20) :
+ *    impossible d'en émettre deux pour le même billet, même en rejouant l'opération à chaque
+ *    service suivant (l'hôtesse reçoit simplement un message « déjà activé »).
+ * 3) Le client exprime chaque droit disponible une seule fois via /vote-sur-place (public,
+ *    aucune authentification requise — seule la connaissance du qrUuid, déjà le modèle de
+ *    confiance du QR billet lui-même, y donne accès). Verrou pessimiste sur les droits
+ *    disponibles pendant la validation, pour empêcher deux tentatives concurrentes.
  *
  * Résultat : 1 billet scanné (à l'entrée ou par l'hôtesse qui sert la 1ère consommation) +
- * 1 consommation validée = au plus 1 vote sur place pour cette soirée, indépendamment du
- * nombre de numéros de téléphone détenus par la personne.
+ * 1 consommation validée = au plus 1 vote de BASE sur place pour cette soirée, indépendamment
+ * du nombre de numéros de téléphone détenus par la personne.
+ *
+ * 4) Complémentaire : {@link #ajouterConsommationBonus} permet à l'hôtesse d'enregistrer des
+ *    consommations réelles supplémentaires au bar sur ce même billet (déjà UTILISE), qui
+ *    débloquent des droits BONUS (plusieurs possibles par billet, pas de contrainte
+ *    d'unicité) par palier configurable, plafonnés par soirée. Ce mécanisme ne touche jamais
+ *    à l'unicité du droit BASE ci-dessus.
  */
 @Service
 @RequiredArgsConstructor
@@ -79,6 +89,7 @@ public class VoteSurPlaceService {
     private final DuoRepository duoRepository;
     private final WhatsappGateway whatsappGateway;
     private final ScanService scanService;
+    private final TicketRepository ticketRepository;
 
     @Value("${nks.frontend-base-url}")
     private String frontendBaseUrl;
@@ -101,7 +112,7 @@ public class VoteSurPlaceService {
 
         Ticket ticket = resoudreTicket(qrUuid, soireeId);
 
-        if (droitVoteSurPlaceRepository.existsByTicketId(ticket.getId())) {
+        if (droitVoteSurPlaceRepository.existsByTicketIdAndTypeDroit(ticket.getId(), TypeDroitVote.BASE)) {
             throw new ConflitEtatException("Ce billet a déjà un droit de vote pour cette soirée");
         }
 
@@ -115,12 +126,13 @@ public class VoteSurPlaceService {
                 .soiree(soiree)
                 .caissier(hotesse)
                 .statut(StatutDroitVote.DISPONIBLE)
+                .typeDroit(TypeDroitVote.BASE)
                 .build();
         droit = droitVoteSurPlaceRepository.save(droit);
 
         envoyerLienWhatsapp(droit, ticket);
 
-        return DroitVoteResponse.from(droit, ticket.getNomSpectateur(), List.of());
+        return consulterDroit(qrUuid, soireeId);
     }
 
     /**
@@ -149,14 +161,15 @@ public class VoteSurPlaceService {
     @Transactional(readOnly = true)
     public DroitVoteResponse consulterDroit(UUID qrUuid, UUID soireeId) {
         Ticket ticket = resoudreTicket(qrUuid, soireeId);
-        DroitVoteSurPlace droit = droitVoteSurPlaceRepository.findByTicketId(ticket.getId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Aucune consommation validée pour ce billet — demandez au bar de valider votre commande"));
+        List<DroitVoteSurPlace> droits = droitVoteSurPlaceRepository.findByTicketIdOrderByDateEmissionAsc(ticket.getId());
+        if (droits.isEmpty()) {
+            throw new ResourceNotFoundException(
+                    "Aucune consommation validée pour ce billet — demandez au bar de valider votre commande");
+        }
 
-        List<Candidat> candidats = droit.getStatut() == StatutDroitVote.DISPONIBLE
-                ? candidatsDeLaSoiree(soireeId)
-                : List.of();
-        return DroitVoteResponse.from(droit, ticket.getNomSpectateur(), candidats);
+        boolean auMoinsUnDisponible = droits.stream().anyMatch(d -> d.getStatut() == StatutDroitVote.DISPONIBLE);
+        List<Candidat> candidats = auMoinsUnDisponible ? candidatsDeLaSoiree(soireeId) : List.of();
+        return DroitVoteResponse.from(droits, ticket.getNomSpectateur(), candidats);
     }
 
     /**
@@ -171,13 +184,11 @@ public class VoteSurPlaceService {
                                     BigDecimal positionLatitude, BigDecimal positionLongitude,
                                     BigDecimal positionPrecisionM) {
         Ticket ticket = resoudreTicket(qrUuid, soireeId);
-        DroitVoteSurPlace droit = droitVoteSurPlaceRepository.findByTicketIdForUpdate(ticket.getId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Aucune consommation validée pour ce billet — demandez au bar de valider votre commande"));
-
-        if (droit.getStatut() == StatutDroitVote.UTILISE) {
-            throw new ConflitEtatException("Ce billet a déjà voté pour cette soirée");
+        List<DroitVoteSurPlace> disponibles = droitVoteSurPlaceRepository.findDisponiblesByTicketIdForUpdate(ticket.getId());
+        if (disponibles.isEmpty()) {
+            throw new ConflitEtatException("Tu as déjà utilisé tous tes votes pour cette soirée");
         }
+        DroitVoteSurPlace droit = disponibles.get(0);
 
         Candidat candidat = candidatRepository.findById(candidatId)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidat introuvable"));
@@ -205,7 +216,7 @@ public class VoteSurPlaceService {
         droit.setPositionLatitude(positionLatitude);
         droit.setPositionLongitude(positionLongitude);
         droit.setPositionPrecisionM(positionPrecisionM);
-        droit = droitVoteSurPlaceRepository.save(droit);
+        droitVoteSurPlaceRepository.save(droit);
 
         if (telephoneVotant != null && !telephoneVotant.isBlank()
                 && !SmsGateway.normaliserTelephone(telephoneVotant).equals(SmsGateway.normaliserTelephone(ticket.getTelephoneSpectateur()))) {
@@ -213,7 +224,7 @@ public class VoteSurPlaceService {
                     telephoneVotant, ticket.getTelephoneSpectateur(), ticket.getId());
         }
 
-        return DroitVoteResponse.from(droit, ticket.getNomSpectateur(), List.of());
+        return consulterDroit(qrUuid, soireeId);
     }
 
     /**
@@ -240,6 +251,93 @@ public class VoteSurPlaceService {
                             droit.getDateVote());
                 })
                 .toList();
+    }
+
+    /**
+     * Action dédiée de l'hôtesse ("Ajouter une consommation"), distincte de
+     * {@link #validerConsommation} : enregistre une consommation supplémentaire au bar sur un
+     * billet déjà UTILISE (entrée déjà validée), et débloque au fur et à mesure les votes
+     * bonus correspondants par palier de {@code soiree.nbConsommationsPourVoteBonus},
+     * plafonnés à {@code soiree.plafondVotesBonus}. Une notification WhatsApp n'est envoyée au
+     * client QUE lorsqu'un nouveau vote bonus est effectivement débloqué par cet appel — jamais
+     * à chaque simple incrémentation.
+     */
+    @Transactional
+    public ConsommationBonusResponse ajouterConsommationBonus(UUID qrUuid, UUID soireeId, Utilisateur hotesse) {
+        Ticket ticket = resoudreTicket(qrUuid, soireeId);
+        if (ticket.getStatut() != StatutTicket.UTILISE) {
+            throw new ValidationMetierException(
+                    "Le billet doit d'abord être validé à l'entrée avant d'ajouter une consommation");
+        }
+
+        SoireeEvent soiree = ticket.getSoiree();
+        Short seuilConfigure = soiree.getNbConsommationsPourVoteBonus();
+        if (seuilConfigure == null || seuilConfigure <= 0) {
+            throw new ValidationMetierException("Les votes bonus ne sont pas activés pour cette soirée");
+        }
+        int seuil = seuilConfigure;
+
+        // Verrou pessimiste sur le ticket : sérialise deux hôtesses qui scanneraient le même
+        // billet en même temps pour deux consommations différentes.
+        ticket = ticketRepository.findByIdForUpdate(ticket.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Billet introuvable"));
+
+        ticket.setNbConsommationsSupplementaires((short) (ticket.getNbConsommationsSupplementaires() + 1));
+        ticket = ticketRepository.save(ticket);
+
+        int attendus = ticket.getNbConsommationsSupplementaires() / seuil;
+        Short plafond = soiree.getPlafondVotesBonus();
+        if (plafond != null) {
+            attendus = Math.min(attendus, plafond);
+        }
+
+        long existants = droitVoteSurPlaceRepository.countByTicketIdAndTypeDroit(ticket.getId(), TypeDroitVote.BONUS);
+        boolean nouveauVoteDebloque = attendus > existants;
+
+        if (nouveauVoteDebloque) {
+            for (long i = existants; i < attendus; i++) {
+                DroitVoteSurPlace bonus = DroitVoteSurPlace.builder()
+                        .ticket(ticket)
+                        .soiree(soiree)
+                        .caissier(hotesse)
+                        .statut(StatutDroitVote.DISPONIBLE)
+                        .typeDroit(TypeDroitVote.BONUS)
+                        .build();
+                droitVoteSurPlaceRepository.save(bonus);
+            }
+        }
+
+        long nbDisponiblesTotal = droitVoteSurPlaceRepository.findByTicketIdOrderByDateEmissionAsc(ticket.getId())
+                .stream().filter(d -> d.getStatut() == StatutDroitVote.DISPONIBLE).count();
+
+        if (nouveauVoteDebloque) {
+            envoyerNotificationVoteBonus(ticket, soireeId, qrUuid, (int) nbDisponiblesTotal);
+        }
+
+        return new ConsommationBonusResponse(
+                ticket.getNbConsommationsSupplementaires(),
+                seuil,
+                plafond != null ? (int) plafond : null,
+                attendus,
+                nouveauVoteDebloque,
+                (int) nbDisponiblesTotal);
+    }
+
+    /**
+     * Envoi best-effort — même pattern que {@link #envoyerLienWhatsapp} : un échec d'envoi ne
+     * doit jamais faire échouer la validation de la consommation elle-même.
+     */
+    private void envoyerNotificationVoteBonus(Ticket ticket, UUID soireeId, UUID qrUuid, int nbVotesDisponiblesTotal) {
+        try {
+            String lien = frontendBaseUrl + "/vote-sur-place/" + soireeId + "/" + qrUuid;
+            String message = "NKS : bravo, ta consommation te donne droit à un nouveau vote bonus ! Tu as maintenant "
+                    + nbVotesDisponiblesTotal + " vote(s) disponible(s). Vote ici : " + lien;
+            whatsappGateway.envoyer(SmsGateway.normaliserTelephone(ticket.getTelephoneSpectateur()),
+                    "karaoke_info", List.of(message));
+        } catch (Exception e) {
+            log.warn("Échec envoi WhatsApp de la notification de vote bonus pour le ticket {} : {}",
+                    ticket.getId(), e.getMessage());
+        }
     }
 
     private Ticket resoudreTicket(UUID qrUuid, UUID soireeId) {

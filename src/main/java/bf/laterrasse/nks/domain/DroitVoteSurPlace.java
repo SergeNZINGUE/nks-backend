@@ -1,6 +1,7 @@
 package bf.laterrasse.nks.domain;
 
 import bf.laterrasse.nks.domain.enums.Enums.StatutDroitVote;
+import bf.laterrasse.nks.domain.enums.Enums.TypeDroitVote;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -10,11 +11,16 @@ import java.util.UUID;
 /**
  * Droit de vote sur place adossé à un billet (Ticket) déjà scanné à l'entrée (anti-fraude
  * §14.6 : le ticket ne peut être marqué UTILISE qu'une seule fois, verrou pessimiste sur le
- * QR code). Un caissier valide ce droit au moment d'une consommation réelle au bar — un seul
- * droit par billet, jamais deux (contrainte UNIQUE ticket_id) — puis le client l'exprime une
- * seule fois via /vote-sur-place. Ce mécanisme garantit 1 personne physique entrée = 1 vote
- * sur place maximum pour cette soirée, sans dépendre d'un numéro de téléphone (facilement
- * dupliqué) ni d'un système de bracelet séparé.
+ * QR code). Un caissier valide le droit de BASE au moment de la première consommation réelle
+ * au bar — un seul droit BASE par billet, jamais deux (index unique partiel
+ * ux_droits_vote_sur_place_ticket_base, cf. V20, garantie anti-fraude inchangée) — puis le
+ * client l'exprime une seule fois via /vote-sur-place. Ce mécanisme garantit 1 personne
+ * physique entrée = 1 vote de base maximum pour cette soirée, sans dépendre d'un numéro de
+ * téléphone (facilement dupliqué) ni d'un système de bracelet séparé.
+ *
+ * Des droits BONUS (plusieurs possibles par billet) peuvent s'y ajouter par paliers de
+ * consommations supplémentaires — cf. VoteSurPlaceService#ajouterConsommationBonus — sans
+ * jamais affaiblir l'unicité du droit BASE.
  */
 @Entity
 @Table(name = "droits_vote_sur_place")
@@ -30,8 +36,8 @@ public class DroitVoteSurPlace {
     @Column(columnDefinition = "uuid")
     private UUID id;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ticket_id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ticket_id", nullable = false)
     private Ticket ticket;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -46,6 +52,11 @@ public class DroitVoteSurPlace {
     @Column(nullable = false, length = 20)
     @Builder.Default
     private StatutDroitVote statut = StatutDroitVote.DISPONIBLE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type_droit", nullable = false, length = 10)
+    @Builder.Default
+    private TypeDroitVote typeDroit = TypeDroitVote.BASE;
 
     @Column(name = "date_emission", nullable = false)
     @Builder.Default

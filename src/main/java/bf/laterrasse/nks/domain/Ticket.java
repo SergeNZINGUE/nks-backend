@@ -50,4 +50,10 @@ public class Ticket {
 
     @Column(name = "date_annulation")
     private Instant dateAnnulation;
+
+    /** Compteur de consommations supplémentaires au bar (au-delà de l'entrée), utilisé pour
+     * calculer les votes bonus débloqués — cf. VoteSurPlaceService#ajouterConsommationBonus. */
+    @Column(name = "nb_consommations_supplementaires", nullable = false)
+    @Builder.Default
+    private Short nbConsommationsSupplementaires = 0;
 }
