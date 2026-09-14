@@ -14,6 +14,7 @@ import bf.laterrasse.nks.domain.enums.Enums.StatutDroitVote;
 import bf.laterrasse.nks.domain.enums.Enums.TypeVote;
 import bf.laterrasse.nks.dto.scan.ScanResponse;
 import bf.laterrasse.nks.dto.votesurplace.DroitVoteResponse;
+import bf.laterrasse.nks.dto.votesurplace.ReconciliationVoteResponse;
 import bf.laterrasse.nks.exception.ConflitEtatException;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.exception.ValidationMetierException;
@@ -213,6 +214,32 @@ public class VoteSurPlaceService {
         }
 
         return DroitVoteResponse.from(droit, ticket.getNomSpectateur(), List.of());
+    }
+
+    /**
+     * Réconciliation admin en cas de contestation — une ligne par vote sur place déjà exprimé
+     * pour cette soirée, croisant le téléphone déclaré au vote (jamais vérifié en temps réel,
+     * cf. Javadoc de la classe) avec le vrai téléphone du billet.
+     */
+    @Transactional(readOnly = true)
+    public List<ReconciliationVoteResponse> reconciliationVotes(UUID soireeId) {
+        return droitVoteSurPlaceRepository.findBySoireeIdAndStatutOrderByDateVoteDesc(soireeId, StatutDroitVote.UTILISE)
+                .stream()
+                .map(droit -> {
+                    Ticket ticket = droit.getTicket();
+                    String telephoneBillet = ticket.getTelephoneSpectateur();
+                    String telephoneVotant = droit.getTelephoneVotant();
+                    boolean correspondent = telephoneVotant == null || telephoneVotant.isBlank()
+                            || SmsGateway.normaliserTelephone(telephoneVotant).equals(SmsGateway.normaliserTelephone(telephoneBillet));
+                    Candidat candidat = droit.getCandidat();
+                    return new ReconciliationVoteResponse(
+                            ticket.getId(), ticket.getNomSpectateur(), telephoneBillet, telephoneVotant, correspondent,
+                            droit.getPositionLatitude(), droit.getPositionLongitude(), droit.getPositionPrecisionM(),
+                            candidat != null ? candidat.getId() : null,
+                            candidat != null ? candidat.getCodeCandidat() : null,
+                            droit.getDateVote());
+                })
+                .toList();
     }
 
     private Ticket resoudreTicket(UUID qrUuid, UUID soireeId) {
