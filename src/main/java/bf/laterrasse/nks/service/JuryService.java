@@ -27,6 +27,7 @@ public class JuryService {
     private final CritereNotationRepository critereNotationRepository;
     private final NoteJuryRepository noteJuryRepository;
     private final ClassementService classementService;
+    private final VoteSnapshotService voteSnapshotService;
 
     @Transactional
     public List<NoteJury> saisirNotes(UUID utilisateurJuryId, SaisirNotesRequest request) {
@@ -40,6 +41,9 @@ public class JuryService {
         }
         if (soiree.getStatut() == bf.laterrasse.nks.domain.enums.Enums.StatutSoiree.TERMINEE) {
             throw new ConflitEtatException("La notation est fermée — cette soirée est terminée");
+        }
+        if (soiree.isDeliberationVerrouilee()) {
+            throw new ConflitEtatException("La délibération de cette soirée est clôturée — les notes sont figées");
         }
         if (noteJuryRepository.existsBySoireeIdAndVerrouilleTrue(soiree.getId())) {
             throw new ConflitEtatException("Les notes de cette soirée sont clôturées et verrouillées");
@@ -115,5 +119,36 @@ public class JuryService {
         noteJuryRepository.saveAll(notes);
 
         classementService.calculerClassementPhase(soiree.getPhase().getId());
+    }
+
+    @Transactional
+    @bf.laterrasse.nks.aop.Auditable(action = "VOTES_SOIREE_ARRETES", entite = "SoireeEvent")
+    public void arreterVotes(UUID soireeId) {
+        voteSnapshotService.arreterVotes(soireeId);
+    }
+
+    @Transactional
+    @bf.laterrasse.nks.aop.Auditable(action = "DELIBERATION_SOIREE_CLOTUREE", entite = "SoireeEvent")
+    public void cloturerDeliberation(UUID soireeId) {
+        SoireeEvent soiree = soireeEventRepository.findById(soireeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Soirée introuvable"));
+        if (soiree.getVotesArretesLe() == null) {
+            throw new ConflitEtatException("Arrêtez d'abord les votes avant de clôturer la délibération");
+        }
+        if (soiree.isDeliberationVerrouilee()) {
+            throw new ConflitEtatException("La délibération de cette soirée est déjà clôturée");
+        }
+
+        List<NoteJury> notes = noteJuryRepository.findBySoireeId(soireeId);
+        Instant now = Instant.now();
+        notes.forEach(n -> { n.setVerrouille(true); n.setDateModification(now); });
+        noteJuryRepository.saveAll(notes);
+
+        classementService.calculerClassementPhase(soiree.getPhase().getId());
+        classementService.gelerEliminationsSoiree(soireeId);
+
+        soiree.setDeliberationVerrouilee(true);
+        soiree.setDeliberationVerrouilleeDate(now);
+        soireeEventRepository.save(soiree);
     }
 }

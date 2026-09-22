@@ -151,6 +151,20 @@ public class JuryController {
         return ResponseEntity.noContent().build();
     }
 
+    @PutMapping("/soirees/{id}/arreter-votes")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Void> arreterVotes(@PathVariable UUID id) {
+        juryService.arreterVotes(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/soirees/{id}/cloturer-deliberation")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Void> cloturerDeliberation(@PathVariable UUID id) {
+        juryService.cloturerDeliberation(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/soirees/{id}/deverrouiller-notation")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<Void> deverrouillerNotation(@PathVariable UUID id) {

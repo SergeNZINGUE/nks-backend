@@ -59,4 +59,12 @@ public class ResultatPhase {
 
     @Column(name = "motif_repechage", columnDefinition = "text")
     private String motifRepechage;
+
+    @Column(name = "gele", nullable = false)
+    @Builder.Default
+    private boolean gele = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "soiree_gelee_id")
+    private SoireeEvent soireeGelee;
 }

@@ -69,4 +69,14 @@ public class SoireeEvent {
     /** Plafond de votes bonus par billet pour cette soirée. Null = pas de plafond. */
     @Column(name = "plafond_votes_bonus")
     private Short plafondVotesBonus;
+
+    @Column(name = "votes_arretes_le")
+    private Instant votesArretesLe;
+
+    @Column(name = "deliberation_verrouillee", nullable = false)
+    @Builder.Default
+    private boolean deliberationVerrouilee = false;
+
+    @Column(name = "deliberation_verrouillee_le")
+    private Instant deliberationVerrouilleeDate;
 }

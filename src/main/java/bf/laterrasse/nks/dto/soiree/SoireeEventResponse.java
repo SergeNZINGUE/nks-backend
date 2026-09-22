@@ -15,7 +15,9 @@ public record SoireeEventResponse(
         String statut,
         boolean voteSurPlaceActif,
         UUID editionId,
-        UUID phaseId
+        UUID phaseId,
+        Instant votesArretesLe,
+        boolean deliberationVerrouilee
 ) {
     public static SoireeEventResponse from(SoireeEvent s) {
         return new SoireeEventResponse(
@@ -28,6 +30,8 @@ public record SoireeEventResponse(
                 s.getStatut().name(),
                 s.isVoteSurPlaceActif(),
                 s.getEdition().getId(),
-                s.getPhase().getId());
+                s.getPhase().getId(),
+                s.getVotesArretesLe(),
+                s.isDeliberationVerrouilee());
     }
 }

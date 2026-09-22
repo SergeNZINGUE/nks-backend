@@ -13,6 +13,8 @@ public record GrilleDeliberationResponse(
         String phaseNom,
         /** true si les notes de cette soirée sont clôturées/verrouillées (JuryService.cloturerSoiree). */
         boolean notationCloturee,
+        /** Non null si les votes ont été figés via arreterVotes — indique la date de gel. */
+        Instant votesArretesLe,
         List<CritereGrilleResponse> criteres,
         List<LigneDeliberationResponse> candidats
 ) {

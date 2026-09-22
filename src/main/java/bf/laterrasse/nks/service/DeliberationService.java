@@ -7,6 +7,7 @@ import bf.laterrasse.nks.domain.Duo;
 import bf.laterrasse.nks.domain.Jury;
 import bf.laterrasse.nks.domain.NoteJury;
 import bf.laterrasse.nks.domain.Phase;
+import bf.laterrasse.nks.domain.SnapshotVotesSoiree;
 import bf.laterrasse.nks.domain.SoireeEvent;
 import bf.laterrasse.nks.domain.enums.Enums.TypeVote;
 import bf.laterrasse.nks.dto.admin.CritereGrilleResponse;
@@ -19,6 +20,7 @@ import bf.laterrasse.nks.repository.AffectationPouleRepository;
 import bf.laterrasse.nks.repository.CritereNotationRepository;
 import bf.laterrasse.nks.repository.DuoRepository;
 import bf.laterrasse.nks.repository.NoteJuryRepository;
+import bf.laterrasse.nks.repository.SnapshotVotesSoireeRepository;
 import bf.laterrasse.nks.repository.SoireeEventRepository;
 import bf.laterrasse.nks.repository.VoteRepository;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +37,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.function.Function;
 
 /**
  * Grille récapitulative d'une soirée pour la délibération finale du jury : notes détaillées
@@ -60,6 +63,7 @@ public class DeliberationService {
     private final CritereNotationRepository critereNotationRepository;
     private final VoteRepository voteRepository;
     private final VoteService voteService;
+    private final SnapshotVotesSoireeRepository snapshotVotesSoireeRepository;
 
     @Transactional(readOnly = true)
     public GrilleDeliberationResponse construire(UUID soireeId) {
@@ -77,16 +81,23 @@ public class DeliberationService {
         List<CritereNotation> criteres = critereNotationRepository
                 .findByEditionIdAndActifTrueOrderByOrdreAsc(phase.getEdition().getId());
 
-        long totalVoixPayantes = voteService.totalVotesPayantsConfirmes(phase.getId());
-        // Vote public sur place : total DE CETTE SOIRÉE uniquement (pas cumulatif sur la phase) —
-        // somme des voix des candidats qui se sont produits ce soir-là, cf. ClassementService.
-        long totalVoixSurPlaceSoiree = candidats.stream()
-                .mapToLong(c -> voteService.votesSurPlace(c.getId(), phase.getId()))
-                .sum();
+        // Charger les snapshots si votes arrêtés
+        Map<UUID, SnapshotVotesSoiree> snapshots = snapshotVotesSoireeRepository.findBySoireeId(soireeId)
+                .stream().collect(Collectors.toMap(s -> s.getCandidat().getId(), Function.identity()));
+        boolean votesArretes = soiree.getVotesArretesLe() != null;
+
+        long totalVoixPayantes = votesArretes && !snapshots.isEmpty()
+                ? snapshots.values().iterator().next().getTotalVoixPayantesPhase()
+                : voteService.totalVotesPayantsConfirmes(phase.getId());
+        long totalVoixSurPlaceSoiree = votesArretes && !snapshots.isEmpty()
+                ? snapshots.values().iterator().next().getTotalVoixSurPlaceSoiree()
+                : candidats.stream().mapToLong(c -> voteService.votesSurPlace(c.getId(), phase.getId())).sum();
+
         List<NoteJury> notesSoiree = noteJuryRepository.findBySoireeId(soireeId);
 
         List<LigneDeliberationResponse> lignes = candidats.stream()
-                .map(c -> construireLigne(c, phase, notesSoiree, totalVoixPayantes, totalVoixSurPlaceSoiree))
+                .map(c -> construireLigne(c, phase, notesSoiree, totalVoixPayantes, totalVoixSurPlaceSoiree,
+                        snapshots.get(c.getId())))
                 .sorted(Comparator.comparing(LigneDeliberationResponse::totalGeneral).reversed())
                 .toList();
 
@@ -95,12 +106,14 @@ public class DeliberationService {
         return new GrilleDeliberationResponse(
                 soiree.getId(), soiree.getNom(), soiree.getDateHeure(),
                 phase.getId(), phase.getNom().name(), notationCloturee,
+                soiree.getVotesArretesLe(),
                 criteres.stream().map(CritereGrilleResponse::from).toList(),
                 lignes);
     }
 
     private LigneDeliberationResponse construireLigne(Candidat candidat, Phase phase, List<NoteJury> notesSoiree,
-                                                        long totalVoixPayantes, long totalVoixSurPlace) {
+                                                        long totalVoixPayantes, long totalVoixSurPlace,
+                                                        SnapshotVotesSoiree snap) {
         List<NoteJury> notesCandidat = notesSoiree.stream()
                 .filter(n -> n.getCandidat().getId().equals(candidat.getId()))
                 .toList();
@@ -123,17 +136,36 @@ public class DeliberationService {
                     .multiply(phase.getPointsMaxJury()).setScale(4, RoundingMode.HALF_UP);
         }
 
-        long votesPayants = voteService.votesPayantsConfirmes(candidat.getId(), phase.getId());
-        long likes = voteRepository.sommeVoixParCandidatEtTypes(candidat.getId(), phase.getId(), List.of(TypeVote.SOCIAL_LIKE));
-        long commentaires = voteRepository.sommeVoixParCandidatEtTypes(candidat.getId(), phase.getId(), List.of(TypeVote.SOCIAL_COMMENTAIRE));
-        BigDecimal pointsPayants = ratio(votesPayants, totalVoixPayantes, phase.getPointsMaxVotesEnLigne());
-        BigDecimal pointsSociaux = POIDS_LIKE.multiply(BigDecimal.valueOf(likes))
-                .add(POIDS_COMMENTAIRE.multiply(BigDecimal.valueOf(commentaires)));
-        BigDecimal pointsVotesEnLigne = pointsPayants.add(pointsSociaux)
-                .min(phase.getPointsMaxVotesEnLigne()).setScale(4, RoundingMode.HALF_UP);
+        long votesPayants;
+        long likes;
+        long commentaires;
+        long votesPublic;
+        BigDecimal pointsVotesEnLigne;
+        BigDecimal pointsPublic;
 
-        long votesPublic = voteService.votesSurPlace(candidat.getId(), phase.getId());
-        BigDecimal pointsPublic = ratio(votesPublic, totalVoixSurPlace, phase.getPointsMaxPublic());
+        if (snap != null) {
+            votesPayants = snap.getVoixPayantes();
+            likes = snap.getVoixSocialesLikes();
+            commentaires = snap.getVoixSocialesCommentaires();
+            votesPublic = snap.getVoixSurPlace();
+            BigDecimal pointsPayants = ratio(votesPayants, snap.getTotalVoixPayantesPhase(), phase.getPointsMaxVotesEnLigne());
+            BigDecimal pointsSociaux = POIDS_LIKE.multiply(BigDecimal.valueOf(likes))
+                    .add(POIDS_COMMENTAIRE.multiply(BigDecimal.valueOf(commentaires)));
+            pointsVotesEnLigne = pointsPayants.add(pointsSociaux)
+                    .min(phase.getPointsMaxVotesEnLigne()).setScale(4, RoundingMode.HALF_UP);
+            pointsPublic = ratio(votesPublic, snap.getTotalVoixSurPlaceSoiree(), phase.getPointsMaxPublic());
+        } else {
+            votesPayants = voteService.votesPayantsConfirmes(candidat.getId(), phase.getId());
+            likes = voteRepository.sommeVoixParCandidatEtTypes(candidat.getId(), phase.getId(), List.of(TypeVote.SOCIAL_LIKE));
+            commentaires = voteRepository.sommeVoixParCandidatEtTypes(candidat.getId(), phase.getId(), List.of(TypeVote.SOCIAL_COMMENTAIRE));
+            votesPublic = voteService.votesSurPlace(candidat.getId(), phase.getId());
+            BigDecimal pointsPayants = ratio(votesPayants, totalVoixPayantes, phase.getPointsMaxVotesEnLigne());
+            BigDecimal pointsSociaux = POIDS_LIKE.multiply(BigDecimal.valueOf(likes))
+                    .add(POIDS_COMMENTAIRE.multiply(BigDecimal.valueOf(commentaires)));
+            pointsVotesEnLigne = pointsPayants.add(pointsSociaux)
+                    .min(phase.getPointsMaxVotesEnLigne()).setScale(4, RoundingMode.HALF_UP);
+            pointsPublic = ratio(votesPublic, totalVoixSurPlace, phase.getPointsMaxPublic());
+        }
 
         BigDecimal totalGeneral = pointsJury.add(pointsVotesEnLigne).add(pointsPublic);
 

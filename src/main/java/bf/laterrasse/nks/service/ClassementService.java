@@ -63,6 +63,8 @@ public class ClassementService {
     private final ClassementRepository classementRepository;
     private final AffectationPouleRepository affectationPouleRepository;
     private final DuoRepository duoRepository;
+    private final SnapshotVotesSoireeRepository snapshotVotesSoireeRepository;
+    private final SoireeEventRepository soireeEventRepository;
 
     @Transactional
     public List<ResultatPhase> calculerClassementPhase(UUID phaseId) {
@@ -75,8 +77,6 @@ public class ClassementService {
                         && c.getStatutProfil() != StatutProfilCandidat.EN_ATTENTE)
                 .toList();
 
-        long totalVoixPayantes = voteService.totalVotesPayantsConfirmes(phaseId);
-
         // Vote public sur place : total à l'échelle de la soirée de CHAQUE candidat, pas de la
         // phase entière. On résout d'abord la soirée de chacun (via poule/duo), puis on
         // additionne les voix des candidats partageant la même soirée.
@@ -85,42 +85,78 @@ public class ClassementService {
             UUID soireeId = resoudreSoireeId(c, phase);
             if (soireeId != null) soireeParCandidat.put(c.getId(), soireeId);
         }
-        Map<UUID, Long> totalSurPlaceParSoiree = new HashMap<>();
+
+        // Charger les snapshots actifs (soirées avec votes arrêtés)
+        Map<UUID, SnapshotVotesSoiree> snapshotParCandidat = new HashMap<>();
         for (Candidat c : candidats) {
             UUID soireeId = soireeParCandidat.get(c.getId());
-            if (soireeId == null) continue;
-            totalSurPlaceParSoiree.merge(soireeId, voteService.votesSurPlace(c.getId(), phase.getId()), Long::sum);
+            if (soireeId != null) {
+                snapshotVotesSoireeRepository.findBySoireeIdAndCandidatId(soireeId, c.getId())
+                        .ifPresent(snap -> snapshotParCandidat.put(c.getId(), snap));
+            }
         }
 
-        List<ResultatPhase> resultats = candidats.stream()
+        // Séparer les candidats gelés (scores préservés) des candidats à recalculer
+        List<ResultatPhase> resultatsGeles = new ArrayList<>();
+        List<Candidat> candidatsARecalculer = new ArrayList<>();
+        for (Candidat c : candidats) {
+            resultatPhaseRepository.findByCandidatIdAndPhaseId(c.getId(), phase.getId())
+                    .filter(ResultatPhase::isGele)
+                    .ifPresentOrElse(
+                            resultatsGeles::add,
+                            () -> candidatsARecalculer.add(c)
+                    );
+        }
+
+        long totalVoixPayantes = voteService.totalVotesPayantsConfirmes(phaseId);
+
+        Map<UUID, Long> totalSurPlaceParSoiree = new HashMap<>();
+        for (Candidat c : candidatsARecalculer) {
+            UUID soireeId = soireeParCandidat.get(c.getId());
+            if (soireeId == null) continue;
+            // Si snapshot disponible, le total sur place est déjà figé dedans — pas besoin de recalculer
+            if (!snapshotParCandidat.containsKey(c.getId())) {
+                totalSurPlaceParSoiree.merge(soireeId, voteService.votesSurPlace(c.getId(), phase.getId()), Long::sum);
+            }
+        }
+
+        List<ResultatPhase> resultatsRecalcules = candidatsARecalculer.stream()
                 .map(candidat -> {
+                    SnapshotVotesSoiree snap = snapshotParCandidat.get(candidat.getId());
                     UUID soireeId = soireeParCandidat.get(candidat.getId());
-                    long totalVoixSurPlaceSoiree = soireeId != null ? totalSurPlaceParSoiree.getOrDefault(soireeId, 0L) : 0L;
-                    return calculerPourCandidat(candidat, phase, totalVoixPayantes, totalVoixSurPlaceSoiree);
+                    long totalVoixSurPlaceSoiree = snap != null
+                            ? snap.getTotalVoixSurPlaceSoiree()
+                            : (soireeId != null ? totalSurPlaceParSoiree.getOrDefault(soireeId, 0L) : 0L);
+                    long totalPayantesEffectif = snap != null ? snap.getTotalVoixPayantesPhase() : totalVoixPayantes;
+                    return calculerPourCandidat(candidat, phase, totalPayantesEffectif, totalVoixSurPlaceSoiree, snap);
                 })
-                .sorted(Comparator.comparing(ResultatPhase::getTotalPoints).reversed())
                 .toList();
 
+        List<ResultatPhase> tousResultats = new ArrayList<>();
+        tousResultats.addAll(resultatsGeles);
+        tousResultats.addAll(resultatsRecalcules);
+        tousResultats.sort(Comparator.comparing(ResultatPhase::getTotalPoints).reversed());
+
         int rang = 1;
-        for (ResultatPhase r : resultats) {
+        for (ResultatPhase r : tousResultats) {
             r.setRang(rang++);
         }
 
         if (phase.getNom() == NomPhase.ELIMINATOIRES) {
             // Top 2 par poule → QUALIFIE, reste → ELIMINE (WF-08).
-            appliquerQualificationParPoule(resultats, phase);
+            appliquerQualificationParPoule(tousResultats, phase);
         } else {
-            for (ResultatPhase r : resultats) {
+            for (ResultatPhase r : tousResultats) {
                 if (r.getStatutQualification() == StatutQualification.EN_ATTENTE) {
                     r.setStatutQualification(StatutQualification.QUALIFIE);
                 }
             }
         }
 
-        resultatPhaseRepository.saveAll(resultats);
+        resultatPhaseRepository.saveAll(tousResultats);
 
-        log.info("Classement recalculé pour la phase {} ({} candidats)", phaseId, resultats.size());
-        return resultats;
+        log.info("Classement recalculé pour la phase {} ({} candidats dont {} gelés)", phaseId, tousResultats.size(), resultatsGeles.size());
+        return tousResultats;
     }
 
     /** Poule ou duo du candidat pour cette phase → soirée où il s'est produit. Null si non affecté. */
@@ -137,12 +173,27 @@ public class ClassementService {
                 .orElse(null);
     }
 
-    private ResultatPhase calculerPourCandidat(Candidat candidat, Phase phase, long totalVoixPayantes, long totalVoixSurPlaceSoiree) {
-        BigDecimal pointsVotesEnLigne = calculerPointsVotesEnLigne(candidat, phase, totalVoixPayantes);
-        BigDecimal pointsPublic = calculerPointsRatio(
-                voteService.votesSurPlace(candidat.getId(), phase.getId()), totalVoixSurPlaceSoiree, phase.getPointsMaxPublic());
-        BigDecimal pointsJury = calculerPointsJury(candidat, phase);
+    private ResultatPhase calculerPourCandidat(Candidat candidat, Phase phase,
+            long totalVoixPayantes, long totalVoixSurPlaceSoiree, SnapshotVotesSoiree snap) {
 
+        BigDecimal pointsVotesEnLigne;
+        BigDecimal pointsPublic;
+
+        if (snap != null) {
+            long voixPayantesCandidat = snap.getVoixPayantes();
+            long totalPayantesPhase = snap.getTotalVoixPayantesPhase();
+            BigDecimal pointsPayants = calculerPointsRatio(voixPayantesCandidat, totalPayantesPhase, phase.getPointsMaxVotesEnLigne());
+            BigDecimal pointsSociaux = POIDS_LIKE.multiply(BigDecimal.valueOf(snap.getVoixSocialesLikes()))
+                    .add(POIDS_COMMENTAIRE.multiply(BigDecimal.valueOf(snap.getVoixSocialesCommentaires())));
+            pointsVotesEnLigne = pointsPayants.add(pointsSociaux).min(phase.getPointsMaxVotesEnLigne()).setScale(4, RoundingMode.HALF_UP);
+            pointsPublic = calculerPointsRatio(snap.getVoixSurPlace(), snap.getTotalVoixSurPlaceSoiree(), phase.getPointsMaxPublic());
+        } else {
+            pointsVotesEnLigne = calculerPointsVotesEnLigne(candidat, phase, totalVoixPayantes);
+            pointsPublic = calculerPointsRatio(
+                    voteService.votesSurPlace(candidat.getId(), phase.getId()), totalVoixSurPlaceSoiree, phase.getPointsMaxPublic());
+        }
+
+        BigDecimal pointsJury = calculerPointsJury(candidat, phase);
         BigDecimal total = pointsVotesEnLigne.add(pointsPublic).add(pointsJury);
 
         ResultatPhase resultat = resultatPhaseRepository.findByCandidatIdAndPhaseId(candidat.getId(), phase.getId())
@@ -290,6 +341,22 @@ public class ClassementService {
         return moyenneInterJury.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)
                 .multiply(phase.getPointsMaxJury())
                 .setScale(4, RoundingMode.HALF_UP);
+    }
+
+    @Transactional
+    public void gelerEliminationsSoiree(UUID soireeId) {
+        List<AffectationPoule> affectations = affectationPouleRepository.findByPouleSoireeId(soireeId);
+        for (AffectationPoule aff : affectations) {
+            Candidat candidat = aff.getCandidat();
+            UUID phaseId = aff.getPoule().getPhase().getId();
+            resultatPhaseRepository.findByCandidatIdAndPhaseId(candidat.getId(), phaseId)
+                    .filter(r -> r.getStatutQualification() == StatutQualification.ELIMINE)
+                    .ifPresent(r -> {
+                        r.setGele(true);
+                        r.setSoireeGelee(soireeEventRepository.getReferenceById(soireeId));
+                        resultatPhaseRepository.save(r);
+                    });
+        }
     }
 
     /** Recalcul immédiat déclenché par la confirmation d'un paiement de vote (événement asynchrone). */
