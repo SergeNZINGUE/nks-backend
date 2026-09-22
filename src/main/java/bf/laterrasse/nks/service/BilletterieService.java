@@ -106,6 +106,12 @@ public class BilletterieService {
         if (!categorie.isActif()) {
             throw new ConflitEtatException("Cette catégorie de billets n'est plus ouverte à la réservation");
         }
+        bf.laterrasse.nks.domain.enums.Enums.StatutSoiree statutSoiree = categorie.getSoiree().getStatut();
+        if (statutSoiree == bf.laterrasse.nks.domain.enums.Enums.StatutSoiree.TERMINEE
+                || statutSoiree == bf.laterrasse.nks.domain.enums.Enums.StatutSoiree.ANNULEE) {
+            throw new ConflitEtatException("Les réservations sont fermées — cette soirée est " +
+                    (statutSoiree == bf.laterrasse.nks.domain.enums.Enums.StatutSoiree.TERMINEE ? "terminée" : "annulée"));
+        }
         int placesRestantes = categorie.getNbPlacesDisponibles() - categorie.getNbPlacesReservees();
         if (placesRestantes < request.nbPlaces()) {
             throw new ConflitEtatException("Places insuffisantes : " + placesRestantes + " restante(s)");

@@ -1,6 +1,7 @@
 package bf.laterrasse.nks.service;
 
 import bf.laterrasse.nks.domain.*;
+import bf.laterrasse.nks.domain.enums.Enums.NomPhase;
 import bf.laterrasse.nks.domain.enums.Enums.StatutProfilCandidat;
 import bf.laterrasse.nks.domain.enums.Enums.StatutQualification;
 import bf.laterrasse.nks.event.ClassementRefreshEvent;
@@ -15,11 +16,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * WF-07 — Calcul du classement par phase. Interprétation retenue pour l'agrégation des
@@ -68,9 +71,8 @@ public class ClassementService {
 
         List<Candidat> candidats = candidatRepository.findAll().stream()
                 .filter(c -> c.getEdition().getId().equals(phase.getEdition().getId()))
-                .filter(c -> c.getStatutProfil() == StatutProfilCandidat.ACTIF
-                        || c.getStatutProfil() == StatutProfilCandidat.FINALISTE
-                        || c.getStatutProfil() == StatutProfilCandidat.GAGNANT)
+                .filter(c -> c.getStatutProfil() != StatutProfilCandidat.SUSPENDU
+                        && c.getStatutProfil() != StatutProfilCandidat.EN_ATTENTE)
                 .toList();
 
         long totalVoixPayantes = voteService.totalVotesPayantsConfirmes(phaseId);
@@ -102,10 +104,19 @@ public class ClassementService {
         int rang = 1;
         for (ResultatPhase r : resultats) {
             r.setRang(rang++);
-            if (r.getStatutQualification() == StatutQualification.EN_ATTENTE) {
-                r.setStatutQualification(StatutQualification.QUALIFIE); // qualification définitive laissée à l'admin (repêchage, WF-08)
+        }
+
+        if (phase.getNom() == NomPhase.ELIMINATOIRES) {
+            // Top 2 par poule → QUALIFIE, reste → ELIMINE (WF-08).
+            appliquerQualificationParPoule(resultats, phase);
+        } else {
+            for (ResultatPhase r : resultats) {
+                if (r.getStatutQualification() == StatutQualification.EN_ATTENTE) {
+                    r.setStatutQualification(StatutQualification.QUALIFIE);
+                }
             }
         }
+
         resultatPhaseRepository.saveAll(resultats);
 
         log.info("Classement recalculé pour la phase {} ({} candidats)", phaseId, resultats.size());
@@ -144,6 +155,84 @@ public class ClassementService {
         return resultat;
     }
 
+    /**
+     * Pour la phase ELIMINATOIRES : les 2 premiers de chaque poule sont QUALIFIÉS,
+     * les suivants sont ÉLIMINÉS. Un candidat sans poule est ÉLIMINÉ.
+     * Le statut REPECHAGE déjà positionné par un admin n'est jamais écrasé.
+     * Le passage à StatutProfilCandidat.ELIMINE est différé à la clôture officielle
+     * de la soirée (TERMINEE) via {@link #appliquerEliminationsStatutProfil}.
+     */
+    private void appliquerQualificationParPoule(List<ResultatPhase> resultats, Phase phase) {
+        Map<UUID, UUID> pouleParCandidat = new HashMap<>();
+        for (ResultatPhase r : resultats) {
+            UUID cid = r.getCandidat().getId();
+            affectationPouleRepository.findByCandidatIdAndPoulePhaseId(cid, phase.getId())
+                    .ifPresent(a -> pouleParCandidat.put(cid, a.getPoule().getId()));
+        }
+
+        Map<UUID, List<ResultatPhase>> parPoule = resultats.stream()
+                .filter(r -> pouleParCandidat.containsKey(r.getCandidat().getId()))
+                .collect(Collectors.groupingBy(r -> pouleParCandidat.get(r.getCandidat().getId())));
+
+        int nbElimines = 0;
+        for (List<ResultatPhase> groupe : parPoule.values()) {
+            List<ResultatPhase> triés = groupe.stream()
+                    .sorted(Comparator.comparing(ResultatPhase::getTotalPoints).reversed())
+                    .toList();
+            for (int i = 0; i < triés.size(); i++) {
+                ResultatPhase r = triés.get(i);
+                if (r.getStatutQualification() == StatutQualification.REPECHAGE) continue;
+                // Candidat déjà éliminé au niveau profil : ne pas recalculer sa qualification
+                if (r.getCandidat().getStatutProfil() == StatutProfilCandidat.ELIMINE) continue;
+                if (i < 2) {
+                    r.setStatutQualification(StatutQualification.QUALIFIE);
+                } else {
+                    r.setStatutQualification(StatutQualification.ELIMINE);
+                    nbElimines++;
+                }
+            }
+        }
+
+        // Candidats sans poule affectée → éliminés (ResultatPhase uniquement)
+        resultats.stream()
+                .filter(r -> !pouleParCandidat.containsKey(r.getCandidat().getId()))
+                .filter(r -> r.getStatutQualification() != StatutQualification.REPECHAGE)
+                .forEach(r -> r.setStatutQualification(StatutQualification.ELIMINE));
+
+        log.info("Qualification par poule : {} poule(s), {} candidat(s) marqués ELIMINE (profil différé à TERMINEE)",
+                parPoule.size(), nbElimines);
+    }
+
+    /**
+     * Appelé lors du passage de la soirée à TERMINEE : traduit les StatutQualification.ELIMINE
+     * en StatutProfilCandidat.ELIMINE pour les candidats de cette soirée. C'est à ce moment
+     * seulement que les votes en ligne sont coupés et le badge affiché côté frontend.
+     */
+    @Transactional
+    public void appliquerEliminationsStatutProfil(UUID soireeId) {
+        List<AffectationPoule> affectations = affectationPouleRepository.findByPouleSoireeId(soireeId);
+        if (affectations.isEmpty()) return;
+
+        List<Candidat> aEliminer = new ArrayList<>();
+        for (AffectationPoule aff : affectations) {
+            Candidat candidat = aff.getCandidat();
+            UUID phaseId = aff.getPoule().getPhase().getId();
+            resultatPhaseRepository.findByCandidatIdAndPhaseId(candidat.getId(), phaseId)
+                    .filter(r -> r.getStatutQualification() == StatutQualification.ELIMINE)
+                    .ifPresent(r -> {
+                        if (candidat.getStatutProfil() == StatutProfilCandidat.ACTIF) {
+                            candidat.setStatutProfil(StatutProfilCandidat.ELIMINE);
+                            aEliminer.add(candidat);
+                        }
+                    });
+        }
+        if (!aEliminer.isEmpty()) {
+            candidatRepository.saveAll(aEliminer);
+        }
+        log.info("Soirée {} → TERMINEE : {} candidat(s) passés à StatutProfilCandidat.ELIMINE",
+                soireeId, aEliminer.size());
+    }
+
     private BigDecimal calculerPointsVotesEnLigne(Candidat candidat, Phase phase, long totalVoixPayantes) {
         long voixPayantesCandidat = voteService.votesPayantsConfirmes(candidat.getId(), phase.getId());
         BigDecimal pointsPayants = calculerPointsRatio(voixPayantesCandidat, totalVoixPayantes, phase.getPointsMaxVotesEnLigne());
@@ -170,7 +259,6 @@ public class ClassementService {
     }
 
     private BigDecimal calculerPointsJury(Candidat candidat, Phase phase) {
-        // Récupère toutes les notes du candidat pour les soirées de cette phase
         List<NoteJury> notes = noteJuryRepository.findAll().stream()
                 .filter(n -> n.getCandidat().getId().equals(candidat.getId()))
                 .filter(n -> n.getSoiree().getPhase().getId().equals(phase.getId()))
@@ -180,15 +268,26 @@ public class ClassementService {
             return BigDecimal.ZERO;
         }
 
-        // Moyenne par juré du total (somme des critères), puis moyenne inter-jurés
-        var totalParJury = notes.stream().collect(java.util.stream.Collectors.groupingBy(
-                n -> n.getJury().getId(),
+        // Pour chaque juré : moyenne des totaux par passage (1 et/ou 2), puis moyenne inter-jurés.
+        // Clé composite : (juryId, numeroPassage) → somme des critères pour ce passage.
+        record JuryPassage(UUID juryId, int passage) {}
+        var totalParJuryPassage = notes.stream().collect(java.util.stream.Collectors.groupingBy(
+                n -> new JuryPassage(n.getJury().getId(), n.getNumeroPassage()),
                 java.util.stream.Collectors.reducing(BigDecimal.ZERO, NoteJury::getValeur, BigDecimal::add)));
 
-        BigDecimal sommeTotaux = totalParJury.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal moyenne = sommeTotaux.divide(BigDecimal.valueOf(totalParJury.size()), 10, RoundingMode.HALF_UP);
+        // Regroupe par juré : moyenne de ses passages disponibles
+        var moyenneParJury = totalParJuryPassage.entrySet().stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        e -> e.getKey().juryId(),
+                        java.util.stream.Collectors.averagingDouble(e -> e.getValue().doubleValue())));
 
-        return moyenne.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)
+        BigDecimal sommeMoyennes = moyenneParJury.values().stream()
+                .map(BigDecimal::valueOf)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal moyenneInterJury = sommeMoyennes.divide(
+                BigDecimal.valueOf(moyenneParJury.size()), 10, RoundingMode.HALF_UP);
+
+        return moyenneInterJury.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)
                 .multiply(phase.getPointsMaxJury())
                 .setScale(4, RoundingMode.HALF_UP);
     }

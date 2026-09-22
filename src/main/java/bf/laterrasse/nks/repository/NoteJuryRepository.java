@@ -15,8 +15,8 @@ public interface NoteJuryRepository extends JpaRepository<NoteJury, UUID> {
 
     List<NoteJury> findBySoireeId(UUID soireeId);
 
-    Optional<NoteJury> findByJuryIdAndCandidatIdAndSoireeIdAndCritereId(
-            UUID juryId, UUID candidatId, UUID soireeId, UUID critereId);
+    Optional<NoteJury> findByJuryIdAndCandidatIdAndSoireeIdAndCritereIdAndNumeroPassage(
+            UUID juryId, UUID candidatId, UUID soireeId, UUID critereId, int numeroPassage);
 
     boolean existsBySoireeIdAndVerrouilleTrue(UUID soireeId);
 }

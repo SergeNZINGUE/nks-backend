@@ -13,6 +13,7 @@ public record NoteJuryResponse(
         UUID soireeId,
         UUID critereId,
         String critereNom,
+        int numeroPassage,
         BigDecimal valeur,
         boolean verrouille,
         Instant dateSaisie
@@ -25,6 +26,7 @@ public record NoteJuryResponse(
                 n.getSoiree().getId(),
                 n.getCritere().getId(),
                 n.getCritere().getNom(),
+                n.getNumeroPassage(),
                 n.getValeur(),
                 n.isVerrouille(),
                 n.getDateSaisie());

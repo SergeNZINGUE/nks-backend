@@ -10,6 +10,7 @@ import bf.laterrasse.nks.dto.admin.CritereNotationAdminResponse;
 import bf.laterrasse.nks.dto.admin.DashboardOrganisateurResponse;
 import bf.laterrasse.nks.dto.admin.DashboardResponse;
 import bf.laterrasse.nks.dto.admin.MettreAJourCritereNotationRequest;
+import bf.laterrasse.nks.dto.admin.ReinitialiserMotDePasseCandidatResponse;
 import bf.laterrasse.nks.dto.admin.UtilisateurAdminResponse;
 import bf.laterrasse.nks.dto.jury.JuryResponse;
 import bf.laterrasse.nks.dto.titre.CreerTitreImposeRequest;
@@ -40,10 +41,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** §13.15 — US-34/35, gestion jury, exports. Tout le module est réservé ADMIN/SUPER_ADMIN. */
+/**
+ * §13.15 — US-34/35, gestion jury, exports.
+ * Spring Security 6 évalue class-level ET method-level @PreAuthorize simultanément :
+ * la class-level ouvre à ADMIN/SUPER_ADMIN/ORGANISATEUR ; chaque endpoint sensible
+ * (jury, critères, rapports, audit, réinitialisation compte admin) redescend explicitement
+ * à ADMIN/SUPER_ADMIN via sa propre annotation.
+ */
 @RestController
 @RequestMapping("/admin")
-@PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
 @RequiredArgsConstructor
 public class AdminController {
 
@@ -59,23 +66,23 @@ public class AdminController {
     private final ChoixTitreService choixTitreService;
 
     @GetMapping("/dashboard")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<DashboardResponse> dashboard() {
         return ResponseEntity.ok(dashboardService.construire());
     }
 
     @GetMapping("/dashboard/organisateur")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<DashboardOrganisateurResponse> dashboardOrganisateur() {
         return ResponseEntity.ok(dashboardService.construirePourOrganisateur());
     }
 
     @PostMapping("/communication/envoyer")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Map<String, Object>> envoyerCommunication(@Valid @RequestBody CommunicationRequest request) {
         return ResponseEntity.ok(communicationService.envoyerGroupe(request));
     }
 
     @GetMapping("/jury")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Transactional(readOnly = true)
     public ResponseEntity<List<JuryResponse>> jury(@RequestParam UUID editionId) {
         List<JuryResponse> result = juryRepository.findByEditionId(editionId).stream()
@@ -85,12 +92,14 @@ public class AdminController {
     }
 
     @PostMapping("/jury")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Transactional
     public ResponseEntity<JuryResponse> creerJury(@Valid @RequestBody CreerJuryRequest request) {
         return ResponseEntity.status(201).body(JuryResponse.from(juryAdminService.creer(request)));
     }
 
     @DeleteMapping("/jury/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<Void> desactiverJury(@PathVariable UUID id) {
         juryAdminService.desactiver(id);
         return ResponseEntity.noContent().build();
@@ -98,6 +107,7 @@ public class AdminController {
 
     /** Remplace intégralement l'ensemble des soirées affectées à ce juré. */
     @PutMapping("/jury/{id}/soirees")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Transactional
     public ResponseEntity<JuryResponse> affecterSoireesJury(@PathVariable UUID id,
                                                              @Valid @RequestBody AffecterSoireesJuryRequest request) {
@@ -105,6 +115,7 @@ public class AdminController {
     }
 
     @GetMapping("/criteres-notation")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Transactional(readOnly = true)
     public ResponseEntity<List<CritereNotationAdminResponse>> criteresNotation(@RequestParam UUID editionId) {
         return ResponseEntity.ok(
@@ -114,6 +125,7 @@ public class AdminController {
     }
 
     @PostMapping("/criteres-notation")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Transactional
     public ResponseEntity<CritereNotationAdminResponse> creerCritereNotation(@Valid @RequestBody CreerCritereNotationRequest request) {
         return ResponseEntity.status(201).body(
@@ -121,6 +133,7 @@ public class AdminController {
     }
 
     @PutMapping("/criteres-notation/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Transactional
     public ResponseEntity<CritereNotationAdminResponse> mettreAJourCritereNotation(
             @PathVariable UUID id, @Valid @RequestBody MettreAJourCritereNotationRequest request) {
@@ -130,7 +143,6 @@ public class AdminController {
 
     /** Titres imposés par le CO, publiés par phase (§ échange du 13/09/2026). Ouvert à ORGANISATEUR (contenu, pas financier). */
     @GetMapping("/phases/{phaseId}/titres-imposes")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     @Transactional(readOnly = true)
     public ResponseEntity<List<TitreImposeResponse>> titresImposes(@PathVariable UUID phaseId) {
         return ResponseEntity.ok(
@@ -138,14 +150,12 @@ public class AdminController {
     }
 
     @PostMapping("/titres-imposes")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     @Transactional
     public ResponseEntity<TitreImposeResponse> creerTitreImpose(@Valid @RequestBody CreerTitreImposeRequest request) {
         return ResponseEntity.status(201).body(TitreImposeResponse.from(titreImposeAdminService.creer(request)));
     }
 
     @DeleteMapping("/titres-imposes/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     @Transactional
     public ResponseEntity<Void> supprimerTitreImpose(@PathVariable UUID id) {
         titreImposeAdminService.supprimer(id);
@@ -154,25 +164,27 @@ public class AdminController {
 
     /** Rapport : pour chaque candidat affecté à une soirée de cette phase, a-t-il choisi son titre ? */
     @GetMapping("/phases/{phaseId}/choix-titres")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     @Transactional(readOnly = true)
     public ResponseEntity<List<StatutChoixTitreCandidatResponse>> statutChoixTitres(@PathVariable UUID phaseId) {
         return ResponseEntity.ok(choixTitreService.statutPhase(phaseId));
     }
 
     @GetMapping("/rapports/votes/export-csv")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<byte[]> exportVotesCsv(@RequestParam UUID phaseId) {
         byte[] csv = rapportService.exporterVotesPhase(phaseId);
         return csvResponse(csv, "votes-phase-" + phaseId + ".csv");
     }
 
     @GetMapping("/billetterie/soiree/{id}/export-csv")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<byte[]> exportTicketsCsv(@PathVariable UUID id) {
         byte[] csv = rapportService.exporterTicketsSoiree(id);
         return csvResponse(csv, "tickets-soiree-" + id + ".csv");
     }
 
     @GetMapping("/audit-logs")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Transactional(readOnly = true)
     public ResponseEntity<Page<AuditLogResponse>> auditLogs(Pageable pageable) {
         Page<AuditLogResponse> result = auditLogRepository.findAllByOrderByTimestampDesc(pageable)
@@ -187,9 +199,16 @@ public class AdminController {
     }
 
     @PostMapping("/utilisateurs/{id}/reinitialiser-mot-de-passe")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<Void> reinitialiserMotDePasse(@PathVariable UUID id) {
         utilisateurAdminService.reinitialiserMotDePasse(id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Réinitialise le mot de passe d'un candidat et retourne le nouveau en clair pour que l'organisateur puisse le transmettre. */
+    @PostMapping("/candidats/{id}/reinitialiser-mot-de-passe")
+    public ResponseEntity<ReinitialiserMotDePasseCandidatResponse> reinitialiserMotDePasseCandidat(@PathVariable UUID id) {
+        return ResponseEntity.ok(utilisateurAdminService.reinitialiserMotDePasseCandidat(id));
     }
 
     @GetMapping("/utilisateurs")

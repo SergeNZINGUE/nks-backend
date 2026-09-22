@@ -8,7 +8,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "notes_jury", uniqueConstraints = @UniqueConstraint(columnNames = {"jury_id", "candidat_id", "soiree_id", "critere_id"}))
+@Table(name = "notes_jury", uniqueConstraints = @UniqueConstraint(
+        name = "uq_notes_jury_jury_candidat_soiree_critere_passage",
+        columnNames = {"jury_id", "candidat_id", "soiree_id", "critere_id", "numero_passage"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -36,6 +38,11 @@ public class NoteJury {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "critere_id", nullable = false)
     private CritereNotation critere;
+
+    /** 1 = premier passage, 2 = deuxième passage. */
+    @Column(name = "numero_passage", nullable = false)
+    @Builder.Default
+    private int numeroPassage = 1;
 
     @Column(nullable = false)
     private BigDecimal valeur;

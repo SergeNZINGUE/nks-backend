@@ -86,6 +86,12 @@ public class CompetitionAdminService {
         resultat.setMotifRepechage(motif);
         resultatPhaseRepository.save(resultat);
 
+        // Restaurer le profil actif pour que le candidat réapparaisse dans les classements suivants.
+        if (candidat.getStatutProfil() == bf.laterrasse.nks.domain.enums.Enums.StatutProfilCandidat.ELIMINE) {
+            candidat.setStatutProfil(bf.laterrasse.nks.domain.enums.Enums.StatutProfilCandidat.ACTIF);
+            candidatRepository.save(candidat);
+        }
+
         Utilisateur utilisateur = candidat.getUtilisateur();
         notificationService.envoyerSmsEtEmail(utilisateur, utilisateur.getTelephone(), utilisateur.getEmail(),
                 TypeNotification.REPECHAGE,

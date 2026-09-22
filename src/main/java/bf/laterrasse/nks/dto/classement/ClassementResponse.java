@@ -14,7 +14,8 @@ public record ClassementResponse(
         BigDecimal totalPointsCumules,
         Integer rangGlobal,
         boolean officiel,
-        Instant dateDerniereMiseAJour
+        Instant dateDerniereMiseAJour,
+        String statutProfil
 ) {
     public static ClassementResponse from(Classement c) {
         return new ClassementResponse(
@@ -25,6 +26,7 @@ public record ClassementResponse(
                 c.getTotalPointsCumules(),
                 c.getRangGlobal(),
                 c.isOfficiel(),
-                c.getDateDerniereMiseAJour());
+                c.getDateDerniereMiseAJour(),
+                c.getCandidat().getStatutProfil().name());
     }
 }

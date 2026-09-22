@@ -117,6 +117,9 @@ public class VoteSurPlaceService {
         }
 
         SoireeEvent soiree = ticket.getSoiree();
+        if (soiree.getStatut() == bf.laterrasse.nks.domain.enums.Enums.StatutSoiree.TERMINEE) {
+            throw new ValidationMetierException("Le vote sur place est fermé — cette soirée est terminée");
+        }
         if (!soiree.isVoteSurPlaceActif()) {
             throw new ValidationMetierException("Le vote sur place n'est pas (ou plus) actif pour cette soirée");
         }
@@ -184,6 +187,9 @@ public class VoteSurPlaceService {
                                     BigDecimal positionLatitude, BigDecimal positionLongitude,
                                     BigDecimal positionPrecisionM) {
         Ticket ticket = resoudreTicket(qrUuid, soireeId);
+        if (ticket.getSoiree().getStatut() == bf.laterrasse.nks.domain.enums.Enums.StatutSoiree.TERMINEE) {
+            throw new ValidationMetierException("Le vote sur place est fermé — cette soirée est terminée");
+        }
         List<DroitVoteSurPlace> disponibles = droitVoteSurPlaceRepository.findDisponiblesByTicketIdForUpdate(ticket.getId());
         if (disponibles.isEmpty()) {
             throw new ConflitEtatException("Tu as déjà utilisé tous tes votes pour cette soirée");
@@ -271,6 +277,9 @@ public class VoteSurPlaceService {
         }
 
         SoireeEvent soiree = ticket.getSoiree();
+        if (soiree.getStatut() == bf.laterrasse.nks.domain.enums.Enums.StatutSoiree.TERMINEE) {
+            throw new ValidationMetierException("L'enregistrement de consommations est fermé — cette soirée est terminée");
+        }
         Short seuilConfigure = soiree.getNbConsommationsPourVoteBonus();
         if (seuilConfigure == null || seuilConfigure <= 0) {
             throw new ValidationMetierException("Les votes bonus ne sont pas activés pour cette soirée");

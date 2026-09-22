@@ -148,11 +148,33 @@ public class DeliberationService {
 
     private NoteParJuryResponse construireNotesJury(List<NoteJury> notes) {
         Jury jury = notes.get(0).getJury();
+
+        // Nombre de passages distincts saisis par ce juré pour ce candidat.
+        long nbPassages = notes.stream().map(NoteJury::getNumeroPassage).distinct().count();
+        if (nbPassages == 0) nbPassages = 1;
+        final long diviseur = nbPassages;
+
+        // Une ligne par critère : valeur = moyenne des passages (cohérent avec ClassementService).
         List<NoteDetailResponse> details = notes.stream()
-                .sorted(Comparator.comparing(n -> n.getCritere().getOrdre()))
-                .map(n -> new NoteDetailResponse(n.getCritere().getId(), n.getCritere().getNom(), n.getValeur()))
+                .collect(Collectors.groupingBy(
+                        n -> n.getCritere().getId(),
+                        Collectors.toList()))
+                .entrySet().stream()
+                .sorted(Comparator.comparingInt(e ->
+                        e.getValue().get(0).getCritere().getOrdre()))
+                .map(e -> {
+                    NoteJury ref = e.getValue().get(0);
+                    BigDecimal somme = e.getValue().stream()
+                            .map(NoteJury::getValeur).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    BigDecimal moyenne = somme.divide(BigDecimal.valueOf(diviseur), 2, RoundingMode.HALF_UP);
+                    return new NoteDetailResponse(ref.getCritere().getId(), ref.getCritere().getNom(), moyenne);
+                })
                 .toList();
-        BigDecimal total = notes.stream().map(NoteJury::getValeur).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // totalJury = moyenne des totaux par passage (même formule que ClassementService.calculerPointsJury).
+        BigDecimal sommeTotale = notes.stream().map(NoteJury::getValeur).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal total = sommeTotale.divide(BigDecimal.valueOf(diviseur), 2, RoundingMode.HALF_UP);
+
         return new NoteParJuryResponse(jury.getId(), jury.getPrenom() + " " + jury.getNom(), details, total);
     }
 

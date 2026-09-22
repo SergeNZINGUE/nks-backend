@@ -149,7 +149,7 @@ public class PouleDuoController {
     }
 
     @PostMapping("/candidats/{id}/repechage")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<?> repecher(@PathVariable UUID id, @RequestParam UUID phaseId,
                                        @Valid @RequestBody RepechageRequest request) {
         return ResponseEntity.ok(competitionAdminService.repecher(id, phaseId, request.motif()));

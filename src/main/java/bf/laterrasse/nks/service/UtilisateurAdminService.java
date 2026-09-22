@@ -5,11 +5,14 @@ import bf.laterrasse.nks.domain.Utilisateur;
 import bf.laterrasse.nks.domain.enums.Enums.RoleName;
 import bf.laterrasse.nks.domain.enums.Enums.StatutUtilisateur;
 import bf.laterrasse.nks.domain.enums.Enums.TypeNotification;
+import bf.laterrasse.nks.domain.Candidat;
 import bf.laterrasse.nks.dto.admin.CreerUtilisateurAdminRequest;
+import bf.laterrasse.nks.dto.admin.ReinitialiserMotDePasseCandidatResponse;
 import bf.laterrasse.nks.dto.admin.UtilisateurAdminResponse;
 import bf.laterrasse.nks.exception.ConflitEtatException;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.exception.ValidationMetierException;
+import bf.laterrasse.nks.repository.CandidatRepository;
 import bf.laterrasse.nks.repository.RoleRepository;
 import bf.laterrasse.nks.repository.UtilisateurRepository;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +36,7 @@ public class UtilisateurAdminService {
     private static final Set<RoleName> ROLES_AUTORISES = EnumSet.of(RoleName.ADMIN, RoleName.SUPER_ADMIN, RoleName.AGENT_ACCUEIL, RoleName.ORGANISATEUR, RoleName.HOTESSE);
 
     private final UtilisateurRepository utilisateurRepository;
+    private final CandidatRepository candidatRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final NotificationService notificationService;
@@ -98,6 +102,39 @@ public class UtilisateurAdminService {
                 "<p>Votre mot de passe a été réinitialisé par un administrateur.</p>"
                         + "<p>Nouveau mot de passe temporaire : <strong>" + motDePasseTemp + "</strong></p>"
                         + "<p>Merci de le modifier dès votre prochaine connexion.</p>");
+    }
+
+    @Transactional
+    public ReinitialiserMotDePasseCandidatResponse reinitialiserMotDePasseCandidat(UUID candidatId) {
+        Candidat candidat = candidatRepository.findById(candidatId)
+                .orElseThrow(() -> new ResourceNotFoundException("Candidat introuvable"));
+        Utilisateur utilisateur = candidat.getUtilisateur();
+
+        String motDePasseTemp = genererMotDePasseTemporaire();
+        utilisateur.setMotDePasseHash(passwordEncoder.encode(motDePasseTemp));
+        utilisateurRepository.save(utilisateur);
+
+        String sms = "NKS : votre mot de passe a été réinitialisé. Nouveau mot de passe : " + motDePasseTemp;
+        String html = notificationService.construireEmailHtml(
+                utilisateur.getPrenom(),
+                "Réinitialisation de votre mot de passe",
+                "<p>Un organisateur a réinitialisé votre mot de passe NKS.</p>"
+                        + "<p>Votre nouveau mot de passe temporaire :</p>"
+                        + notificationService.encadre(motDePasseTemp, true)
+                        + "<p style=\"margin:12px 0 0;\">Connectez-vous et modifiez-le dès que possible.</p>",
+                null, null);
+        notificationService.envoyerSmsEtEmail(
+                utilisateur, utilisateur.getTelephone(), utilisateur.getEmail(),
+                TypeNotification.CONVOCATION,
+                sms,
+                "NKS — Réinitialisation de votre mot de passe",
+                html);
+
+        return new ReinitialiserMotDePasseCandidatResponse(
+                motDePasseTemp,
+                utilisateur.getPrenom() + " " + utilisateur.getNom(),
+                utilisateur.getEmail(),
+                utilisateur.getTelephone());
     }
 
     public List<UtilisateurAdminResponse> listerAdmins() {

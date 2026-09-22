@@ -38,6 +38,9 @@ public class JuryService {
         if (!jury.getSoirees().contains(soiree)) {
             throw new AccesRefuseException("Cette soirée n'est pas affectée à ce juré");
         }
+        if (soiree.getStatut() == bf.laterrasse.nks.domain.enums.Enums.StatutSoiree.TERMINEE) {
+            throw new ConflitEtatException("La notation est fermée — cette soirée est terminée");
+        }
         if (noteJuryRepository.existsBySoireeIdAndVerrouilleTrue(soiree.getId())) {
             throw new ConflitEtatException("Les notes de cette soirée sont clôturées et verrouillées");
         }
@@ -45,12 +48,13 @@ public class JuryService {
         Candidat candidat = candidatRepository.findById(request.candidatId())
                 .orElseThrow(() -> new ResourceNotFoundException("Candidat introuvable"));
 
+        int passage = request.numeroPassage();
         return request.notes().stream()
-                .map(input -> enregistrerNote(jury, candidat, soiree, input))
+                .map(input -> enregistrerNote(jury, candidat, soiree, input, passage))
                 .toList();
     }
 
-    private NoteJury enregistrerNote(Jury jury, Candidat candidat, SoireeEvent soiree, NoteInput input) {
+    private NoteJury enregistrerNote(Jury jury, Candidat candidat, SoireeEvent soiree, NoteInput input, int numeroPassage) {
         CritereNotation critere = critereNotationRepository.findById(input.critereId())
                 .orElseThrow(() -> new ResourceNotFoundException("Critère de notation introuvable"));
 
@@ -60,8 +64,10 @@ public class JuryService {
         }
 
         NoteJury note = noteJuryRepository
-                .findByJuryIdAndCandidatIdAndSoireeIdAndCritereId(jury.getId(), candidat.getId(), soiree.getId(), critere.getId())
-                .orElse(NoteJury.builder().jury(jury).candidat(candidat).soiree(soiree).critere(critere).build());
+                .findByJuryIdAndCandidatIdAndSoireeIdAndCritereIdAndNumeroPassage(
+                        jury.getId(), candidat.getId(), soiree.getId(), critere.getId(), numeroPassage)
+                .orElse(NoteJury.builder().jury(jury).candidat(candidat).soiree(soiree)
+                        .critere(critere).numeroPassage(numeroPassage).build());
 
         if (note.isVerrouille()) {
             throw new ConflitEtatException("Cette note est déjà verrouillée");

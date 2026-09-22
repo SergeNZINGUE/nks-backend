@@ -7,6 +7,7 @@ import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.repository.PhaseRepository;
 import bf.laterrasse.nks.repository.SoireeEventRepository;
 import bf.laterrasse.nks.service.BilletterieService;
+import bf.laterrasse.nks.service.ClassementService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,6 +26,7 @@ public class SoireeController {
     private final SoireeEventRepository soireeEventRepository;
     private final PhaseRepository phaseRepository;
     private final BilletterieService billetterieService;
+    private final ClassementService classementService;
 
     @GetMapping
     @Transactional(readOnly = true)
@@ -77,6 +79,7 @@ public class SoireeController {
         // pour éviter de re-parcourir les tickets à chaque mise à jour ultérieure.
         if (sauvegardee.getStatut() == StatutSoiree.TERMINEE && ancienStatut != StatutSoiree.TERMINEE) {
             billetterieService.expirerTicketsSoiree(sauvegardee.getId());
+            classementService.appliquerEliminationsStatutProfil(sauvegardee.getId());
         }
 
         return ResponseEntity.ok(sauvegardee);

@@ -1,6 +1,7 @@
 package bf.laterrasse.nks.exception;
 
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -10,6 +11,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
 
@@ -56,6 +58,15 @@ public class GlobalExceptionHandler {
         log.warn("Violation de contrainte base de données : {}", ex.getMostSpecificCause().getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiError.of("CONTRAINTE_VIOLEE", "Cette opération viole une contrainte de données (doublon ou référence invalide)"));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest req) {
+        log.warn("Paramètre '{}' invalide sur {} {} : valeur reçue = '{}'",
+                ex.getName(), req.getMethod(), req.getRequestURI(),
+                ex.getValue() != null ? ex.getValue().toString().substring(0, Math.min(80, ex.getValue().toString().length())) : "null");
+        return ResponseEntity.badRequest().body(ApiError.of("PARAMETRE_INVALIDE",
+                "Le paramètre '" + ex.getName() + "' a une valeur incorrecte"));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
