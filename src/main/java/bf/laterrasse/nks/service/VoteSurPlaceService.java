@@ -14,6 +14,7 @@ import bf.laterrasse.nks.domain.enums.Enums.StatutDroitVote;
 import bf.laterrasse.nks.domain.enums.Enums.StatutTicket;
 import bf.laterrasse.nks.domain.enums.Enums.TypeDroitVote;
 import bf.laterrasse.nks.domain.enums.Enums.TypeVote;
+import bf.laterrasse.nks.dto.billetterie.TicketAvecQrResponse;
 import bf.laterrasse.nks.dto.scan.ScanResponse;
 import bf.laterrasse.nks.dto.votesurplace.ConsommationBonusResponse;
 import bf.laterrasse.nks.dto.votesurplace.DroitVoteResponse;
@@ -45,7 +46,7 @@ import java.util.UUID;
 import java.util.stream.Stream;
 
 /**
- * Vote public sur place — cinématique anti-fraude (cf. échanges des 13/09/2026) :
+ * Vote public sur place — cinématique anti-fraude :
  *
  * 1) Une HOTESSE en salle (plus de point de caisse unique ni d'agent d'accueil séparé pour
  *    ce flux) scanne le billet du client et confirme sa consommation en une seule action,
@@ -90,6 +91,7 @@ public class VoteSurPlaceService {
     private final WhatsappGateway whatsappGateway;
     private final ScanService scanService;
     private final TicketRepository ticketRepository;
+    private final AppareilVoteService appareilVoteService;
 
     @Value("${nks.frontend-base-url}")
     private String frontendBaseUrl;
@@ -139,11 +141,11 @@ public class VoteSurPlaceService {
     }
 
     /**
-     * Envoi best-effort — ferme la faille signalée le 13/09/2026 : le lien part directement
-     * au numéro déjà associé à la réservation du billet, jamais affiché/relayé par le
-     * caissier, ce qui rend son interception par un tiers bien plus difficile qu'un lien
-     * montré à l'écran de la caisse. Un échec d'envoi (gateway simulée, réseau, numéro
-     * invalide) ne doit jamais faire échouer la validation de la consommation elle-même.
+     * Envoi best-effort — le lien part directement au numéro déjà associé à la réservation du
+     * billet, jamais affiché/relayé par le caissier, ce qui rend son interception par un tiers
+     * bien plus difficile qu'un lien montré à l'écran de la caisse. Un échec d'envoi (gateway
+     * simulée, réseau, numéro invalide) ne doit jamais faire échouer la validation de la
+     * consommation elle-même.
      */
     private void envoyerLienWhatsapp(DroitVoteSurPlace droit, Ticket ticket) {
         try {
@@ -159,6 +161,21 @@ public class VoteSurPlaceService {
             log.warn("Échec envoi WhatsApp du lien de vote sur place pour le ticket {} : {}",
                     ticket.getId(), e.getMessage());
         }
+    }
+
+    /**
+     * Lecture seule. Si un jeton d'appareil VALIDE est fourni et déjà lié à un AUTRE billet de la
+     * soirée, {@code appareilDejaUtilise} vaut true (le frontend bloque tôt) ; un jeton absent ou
+     * invalide donne simplement false — jamais d'erreur ni d'écriture sur ce chemin.
+     */
+    @Transactional(readOnly = true)
+    public DroitVoteResponse consulterDroit(UUID qrUuid, UUID soireeId, String appareilToken) {
+        DroitVoteResponse reponse = consulterDroit(qrUuid, soireeId);
+        boolean dejaUtilise = appareilVoteService.lireJetonSiValide(appareilToken)
+                .map(appareil -> appareilVoteService.estLieAUnAutreBillet(
+                        soireeId, resoudreTicket(qrUuid, soireeId).getId(), appareil))
+                .orElse(false);
+        return reponse.avecAppareilDejaUtilise(dejaUtilise);
     }
 
     @Transactional(readOnly = true)
@@ -185,7 +202,10 @@ public class VoteSurPlaceService {
     @Transactional
     public DroitVoteResponse voter(UUID qrUuid, UUID soireeId, UUID candidatId, String telephoneVotant,
                                     BigDecimal positionLatitude, BigDecimal positionLongitude,
-                                    BigDecimal positionPrecisionM) {
+                                    BigDecimal positionPrecisionM, AppareilVoteService.ContexteAppareil appareil) {
+        // Jeton d'appareil OBLIGATOIRE et valide (signature HMAC) : 400 APPAREIL_INCONNU sinon, avant tout effet.
+        UUID appareilUuid = appareilVoteService.verifierJeton(appareil == null ? null : appareil.token());
+
         Ticket ticket = resoudreTicket(qrUuid, soireeId);
         if (ticket.getSoiree().getStatut() == bf.laterrasse.nks.domain.enums.Enums.StatutSoiree.TERMINEE) {
             throw new ValidationMetierException("Le vote sur place est fermé — cette soirée est terminée");
@@ -204,6 +224,10 @@ public class VoteSurPlaceService {
         if (!appartientALaSoiree) {
             throw new ValidationMetierException("Ce candidat ne se produit pas lors de cette soirée");
         }
+
+        // Blocage dur : un appareil = un billet par soirée. Dans la transaction (droit déjà verrouillé) :
+        // refus 409 => aucun vote créé, aucun droit consommé (la transaction est annulée).
+        appareilVoteService.enregistrerOuVerifier(soireeId, ticket.getId(), appareilUuid, appareil);
 
         Vote vote = Vote.builder()
                 .candidat(candidat)
@@ -224,10 +248,20 @@ public class VoteSurPlaceService {
         droit.setPositionPrecisionM(positionPrecisionM);
         droitVoteSurPlaceRepository.save(droit);
 
-        if (telephoneVotant != null && !telephoneVotant.isBlank()
-                && !SmsGateway.normaliserTelephone(telephoneVotant).equals(SmsGateway.normaliserTelephone(ticket.getTelephoneSpectateur()))) {
-            log.warn("Vote sur place : téléphone saisi ({}) différent du téléphone du billet ({}) — ticket {}, à recouper en cas de contestation",
-                    telephoneVotant, ticket.getTelephoneSpectateur(), ticket.getId());
+        if (telephoneVotant != null && !telephoneVotant.isBlank()) {
+            String votantNormalise = SmsGateway.normaliserTelephone(telephoneVotant);
+            if (!votantNormalise.equals(SmsGateway.normaliserTelephone(ticket.getTelephoneSpectateur()))) {
+                log.warn("Vote sur place : téléphone saisi ({}) différent du téléphone du billet ({}) — ticket {}, à recouper en cas de contestation",
+                        TicketAvecQrResponse.masquerTelephone(votantNormalise),
+                        TicketAvecQrResponse.masquerTelephone(ticket.getTelephoneSpectateur()), ticket.getId());
+                // Signal souple (jamais bloquant) : le numéro déclaré est celui d'un AUTRE billet de la soirée.
+                if (ticketRepository.existsBySoireeIdAndTelephoneSpectateurAndIdNot(
+                        soireeId, votantNormalise, ticket.getId())) {
+                    log.warn("SIGNAL_SOUPLE_VOTE : le téléphone déclaré au vote ({}) correspond à un AUTRE billet de la soirée {} "
+                                    + "— billet votant {}, aucun blocage appliqué",
+                            TicketAvecQrResponse.masquerTelephone(votantNormalise), soireeId, ticket.getId());
+                }
+            }
         }
 
         return consulterDroit(qrUuid, soireeId);

@@ -5,6 +5,7 @@ import bf.laterrasse.nks.domain.enums.Enums.StatutReservation;
 import bf.laterrasse.nks.domain.enums.Enums.StatutTicket;
 import bf.laterrasse.nks.domain.enums.Enums.TypeNotification;
 import bf.laterrasse.nks.domain.enums.Enums.TypePaiement;
+import bf.laterrasse.nks.dto.billetterie.BeneficiaireBilletRequest;
 import bf.laterrasse.nks.dto.billetterie.ReservationRequest;
 import bf.laterrasse.nks.dto.billetterie.ReservationResponse;
 import bf.laterrasse.nks.dto.billetterie.TicketAvecQrResponse;
@@ -12,6 +13,7 @@ import bf.laterrasse.nks.event.PaiementConfirmeEvent;
 import bf.laterrasse.nks.event.PaiementEchoueEvent;
 import bf.laterrasse.nks.exception.AccesRefuseException;
 import bf.laterrasse.nks.exception.ConflitEtatException;
+import bf.laterrasse.nks.exception.ContrainteBd;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.exception.ValidationMetierException;
 import bf.laterrasse.nks.gateway.email.EmailGateway;
@@ -26,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,11 +52,13 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * WF-09/WF-10/WF-14. Remboursement billetterie décidé avec le client : traitement MANUEL
@@ -69,7 +74,7 @@ public class BilletterieService {
     private static final DateTimeFormatter FORMAT_DATE_BILLET =
             DateTimeFormatter.ofPattern("EEEE d MMMM yyyy 'à' HH:mm", Locale.FRENCH);
 
-    // Visuel billet "badge FESPACO" (correctif retour client 14/09/2026) — même palette et
+    // Visuel billet "badge FESPACO" — même palette et
     // mise en page que nks-frontend/src/app/core/services/ticket-image.service.ts, pour que
     // le billet reçu par e-mail soit identique au billet téléchargeable côté client.
     private static final int LARGEUR_BILLET = 480;
@@ -86,6 +91,16 @@ public class BilletterieService {
     private static volatile BufferedImage logoNksCache;
     private static volatile BufferedImage logoTerrasseCache;
 
+    /** E.164 : '+' puis 8 à 15 chiffres (le numéro est déjà passé par SmsGateway.normaliserTelephone). */
+    private static final Pattern TELEPHONE_E164 = Pattern.compile("^\\+[1-9][0-9]{7,14}$");
+    private static final List<StatutTicket> STATUTS_TICKET_LIBERES = List.of(StatutTicket.ANNULE, StatutTicket.EXPIRE);
+
+    /** Bénéficiaire valide et normalisé, prêt à être persisté (aucun effet de bord). */
+    private record BeneficiaireNormalise(int position, String nom, String telephone) {}
+
+    /** Plafond de pré-réservations PENDING non expirées d'un même payeur pour une soirée. */
+    private static final int MAX_PRERESERVATIONS_EN_ATTENTE = 2;
+
     private final CategorieTicketRepository categorieTicketRepository;
     private final ReservationRepository reservationRepository;
     private final TicketRepository ticketRepository;
@@ -94,6 +109,8 @@ public class BilletterieService {
     private final ParametrePlateformeService parametrePlateformeService;
     private final NotificationService notificationService;
     private final TicketAccessTokenService ticketAccessTokenService;
+    private final ReservationBeneficiaireRepository reservationBeneficiaireRepository;
+    private final AppareilVoteSurPlaceRepository appareilVoteSurPlaceRepository;
 
     @Value("${nks.frontend-base-url}")
     private String frontendBaseUrl;
@@ -117,14 +134,32 @@ public class BilletterieService {
             throw new ConflitEtatException("Places insuffisantes : " + placesRestantes + " restante(s)");
         }
 
-        BigDecimal montant = categorie.getPrix().multiply(BigDecimal.valueOf(request.nbPlaces()));
-        int delaiMinutes = parametrePlateformeService.getInt("DELAI_PRERESA_MINUTES", 15);
         // Correctif bug UX (recherche "mes tickets") : toute nouvelle réservation est stockée
         // en E.164, pour que la recherche par téléphone local/international soit cohérente.
         String telephoneNormalise = SmsGateway.normaliserTelephone(request.telephoneReservant());
 
+        // Sérialise les écrivains de l'unicité des numéros pour cette soirée (voir verrouillerSoiree), puis
+        // applique le plafond de pré-réservations en attente du payeur — sous verrou, donc sans course.
+        verrouillerSoiree(categorie.getSoiree().getId());
+        long enAttente = reservationRepository.countByTelephoneReservantAndSoireeIdAndStatutAndDateExpirationAfter(
+                telephoneNormalise, categorie.getSoiree().getId(), StatutReservation.PENDING, Instant.now());
+        if (enAttente >= MAX_PRERESERVATIONS_EN_ATTENTE) {
+            throw new ConflitEtatException("Vous avez déjà " + MAX_PRERESERVATIONS_EN_ATTENTE
+                    + " réservations en attente de paiement pour cette soirée. Finalisez-les ou attendez leur "
+                    + "expiration avant d'en créer une nouvelle.");
+        }
+
+        // Un numéro par billet : toutes les validations (taille, format, doublons, unicité par soirée)
+        // se font AVANT tout effet de bord (compteur de places, paiement) — rien ne peut fuiter.
+        List<BeneficiaireNormalise> beneficiaires = preparerBeneficiaires(
+                categorie.getSoiree().getId(), request.nbPlaces(), request.beneficiaires());
+
+        BigDecimal montant = categorie.getPrix().multiply(BigDecimal.valueOf(request.nbPlaces()));
+        int delaiMinutes = parametrePlateformeService.getInt("DELAI_PRERESA_MINUTES", 15);
+
         Reservation reservation = Reservation.builder()
                 .soiree(categorie.getSoiree())
+                .categorie(categorie)
                 .telephoneReservant(telephoneNormalise)
                 .nomReservant(request.nomReservant())
                 .emailReservant(request.emailReservant())
@@ -138,6 +173,12 @@ public class BilletterieService {
         // Pré-réservation immédiate des places (libérées par ReservationExpiryJob si non payées à temps)
         categorie.setNbPlacesReservees(categorie.getNbPlacesReservees() + request.nbPlaces());
         categorieTicketRepository.save(categorie);
+
+        // Réservation et bénéficiaires sont persistés (flush) AVANT l'appel au fournisseur de paiement :
+        // une violation d'unicité concurrente (index partiel dédié) annule tout (places incluses) sans
+        // jamais avoir lancé de paiement.
+        reservation = reservationRepository.save(reservation);
+        enregistrerBeneficiaires(reservation, beneficiaires);
 
         String urlPaiement = null;
         if (!reservation.isGratuit()) {
@@ -189,11 +230,91 @@ public class BilletterieService {
         }
         reservationRepository.findByPaiementId(event.paiementId())
                 .ifPresent(reservation -> {
+                    // Paiement confirmé APRÈS expiration de la pré-réservation : places et numéros ont été
+                    // libérés et ont pu être repris — on ne délivre plus les billets à l'aveugle.
+                    if (reservation.getStatut() == StatutReservation.EXPIREE && !reactiverReservationExpiree(reservation)) {
+                        return;
+                    }
                     reservation.setStatut(StatutReservation.CONFIRMEE);
                     reservationRepository.save(reservation);
-                    CategorieTicket categorie = trouverCategoriePourReservation(reservation);
+                    CategorieTicket categorie = resoudreCategorieVerrouillee(reservation);
                     genererTickets(reservation, categorie);
                 });
+    }
+
+    /**
+     * Réservation EXPIREE dont le paiement est confirmé tardivement : revérifie sous verrou (catégorie puis
+     * soirée, même ordre que {@link #initierReservation}) que les places et les numéros sont toujours libres
+     * (billets actifs et bénéficiaires actifs, HORS cette réservation). Tout libre => places re-réservées et
+     * lignes réactivées (l'appelant émet les billets). Sinon => aucun billet, la réservation reste EXPIREE
+     * alors que son paiement est COMPLETED (marqueur de remboursement/traitement manuel, sans nouveau statut ni
+     * migration), WARN sans numéro et SMS au payeur.
+     *
+     * Ne lève jamais d'exception vers le listener synchrone (sinon le paiement confirmé serait annulé) :
+     * l'absence de violation SQL est garantie par le verrou de soirée + la garde NOT EXISTS de la réactivation.
+     *
+     * @return true si la réservation peut être confirmée normalement
+     */
+    private boolean reactiverReservationExpiree(Reservation reservation) {
+        String motif;
+        try {
+            UUID soireeId = reservation.getSoiree().getId();
+            UUID categorieId = reservation.getCategorie() != null
+                    ? reservation.getCategorie().getId() : trouverCategoriePourReservation(reservation).getId();
+            CategorieTicket categorie = categorieTicketRepository
+                    .findByIdForUpdate(categorieId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Catégorie de ticket introuvable pour la soirée"));
+            verrouillerSoiree(soireeId);
+
+            List<ReservationBeneficiaire> beneficiaires =
+                    reservationBeneficiaireRepository.findByReservationIdOrderByPositionAsc(reservation.getId());
+            List<String> telephones = beneficiaires.stream().map(ReservationBeneficiaire::getTelephone).toList();
+
+            boolean numerosLibres = true;
+            if (!telephones.isEmpty()) {
+                numerosLibres = ticketRepository.findTelephonesPortesParBilletActifHorsReservation(
+                        soireeId, telephones, STATUTS_TICKET_LIBERES, reservation.getId()).isEmpty()
+                        && reservationBeneficiaireRepository.findTelephonesActifsHorsReservation(
+                        soireeId, telephones, reservation.getId()).isEmpty();
+            }
+            int placesRestantes = categorie.getNbPlacesDisponibles() - categorie.getNbPlacesReservees();
+
+            if (!numerosLibres) {
+                motif = "numéro(s) redevenu(s) indisponible(s)";
+            } else if (placesRestantes < reservation.getNbPlaces()) {
+                motif = "places épuisées depuis l'expiration";
+            } else if (!telephones.isEmpty()
+                    && reservationBeneficiaireRepository.reactiverParReservation(reservation.getId()) != telephones.size()) {
+                reservationBeneficiaireRepository.desactiverParReservation(reservation.getId());
+                motif = "réactivation des numéros impossible";
+            } else {
+                categorie.setNbPlacesReservees(categorie.getNbPlacesReservees() + reservation.getNbPlaces());
+                categorieTicketRepository.save(categorie);
+                log.info("Réservation {} expirée puis payée : places et numéros réactivés, billets émis", reservation.getId());
+                return true;
+            }
+        } catch (RuntimeException e) {
+            log.error("Réservation {} expirée puis payée : re-vérification impossible ({}) — traitement manuel",
+                    reservation.getId(), e.getClass().getSimpleName());
+            motif = "erreur de re-vérification";
+        }
+
+        log.warn("PAIEMENT_A_TRAITER_MANUELLEMENT réservation={} soirée={} : paiement confirmé après expiration, "
+                + "billets NON émis ({}) — remboursement ou traitement manuel requis",
+                reservation.getId(), reservation.getSoiree().getId(), motif);
+        try {
+            notificationService.envoyerSms(null, reservation.getTelephoneReservant(), TypeNotification.BILLET_EMIS,
+                    "NKS : votre paiement a bien été reçu mais votre réservation avait expiré et vos billets n'ont pas "
+                            + "pu être émis. Notre équipe vous contactera pour un remboursement ou un traitement manuel.");
+        } catch (RuntimeException e) {
+            log.warn("SMS d'information non envoyé pour la réservation {} : {}", reservation.getId(), e.getClass().getSimpleName());
+        }
+        return false;
+    }
+
+    /** Sérialise, pour une soirée, tous les écrivains de l'unicité des numéros (verrou transactionnel PostgreSQL). */
+    private void verrouillerSoiree(UUID soireeId) {
+        reservationBeneficiaireRepository.verrouillerSoiree("nks-num-billet:" + soireeId);
     }
 
     @EventListener
@@ -222,10 +343,17 @@ public class BilletterieService {
             throw new ValidationMetierException("Annulation impossible à moins de 24h de la soirée (RM-46)");
         }
 
+        // Un billet déjà scanné à l'entrée (UTILISE) ne peut plus être annulé : refus AVANT toute modification.
+        List<Ticket> tickets = ticketRepository.findByReservationId(reservationId);
+        if (tickets.stream().anyMatch(t -> t.getStatut() == StatutTicket.UTILISE)) {
+            throw new ConflitEtatException("Annulation impossible : au moins un billet de cette réservation a déjà "
+                    + "été utilisé à l'entrée.");
+        }
+
         reservation.setStatut(StatutReservation.ANNULEE);
         reservationRepository.save(reservation);
-
-        List<Ticket> tickets = ticketRepository.findByReservationId(reservationId);
+        reservationBeneficiaireRepository.desactiverParReservation(reservation.getId());
+        libererAppareils(tickets);
         Instant now = Instant.now();
         tickets.forEach(t -> {
             t.setStatut(StatutTicket.ANNULE);
@@ -235,7 +363,7 @@ public class BilletterieService {
         });
         ticketRepository.saveAll(tickets);
 
-        CategorieTicket categorie = trouverCategoriePourReservation(reservation);
+        CategorieTicket categorie = resoudreCategorieVerrouillee(reservation);
         categorie.setNbPlacesReservees(Math.max(0, categorie.getNbPlacesReservees() - reservation.getNbPlaces()));
         categorieTicketRepository.save(categorie);
 
@@ -269,22 +397,126 @@ public class BilletterieService {
                 .toList();
     }
 
+    /** Supprime les appareils de vote liés aux billets annulés/expirés — jamais ceux d'un billet UTILISE. */
+    private void libererAppareils(List<Ticket> tickets) {
+        List<UUID> ids = tickets.stream()
+                .filter(t -> t.getStatut() != StatutTicket.UTILISE)
+                .map(Ticket::getId)
+                .toList();
+        if (!ids.isEmpty()) {
+            appareilVoteSurPlaceRepository.supprimerParTicketIds(ids);
+        }
+    }
+
     private void liberer(Reservation reservation) {
         reservation.setStatut(StatutReservation.EXPIREE);
         reservationRepository.save(reservation);
-        CategorieTicket categorie = trouverCategoriePourReservation(reservation);
+        reservationBeneficiaireRepository.desactiverParReservation(reservation.getId());
+        CategorieTicket categorie = resoudreCategorieVerrouillee(reservation);
         categorie.setNbPlacesReservees(Math.max(0, categorie.getNbPlacesReservees() - reservation.getNbPlaces()));
         categorieTicketRepository.save(categorie);
     }
 
+    /**
+     * Résout puis verrouille (SELECT ... FOR UPDATE, {@link CategorieTicketRepository#findByIdForUpdate})
+     * la catégorie d'une réservation AVANT toute lecture/modification de son compteur de places — même
+     * schéma que {@link #reactiverReservationExpiree} et {@link #initierReservation}. Utilisée par tous
+     * les sites qui décrémentent/incrémentent {@code nbPlacesReservees} en dehors de la réactivation
+     * tardive (qui pose en plus son propre verrou de soirée, distinct de celui-ci).
+     */
+    private CategorieTicket resoudreCategorieVerrouillee(Reservation reservation) {
+        UUID categorieId = reservation.getCategorie() != null
+                ? reservation.getCategorie().getId() : trouverCategoriePourReservation(reservation).getId();
+        return categorieTicketRepository.findByIdForUpdate(categorieId)
+                .orElseThrow(() -> new ResourceNotFoundException("Catégorie de ticket introuvable pour la soirée"));
+    }
+
+    /**
+     * Repli de secours UNIQUEMENT pour une réservation legacy dont {@code categorie_id} serait
+     * resté NULL après le backfill de la migration d'ajout de colonne (PENDING/EXPIREE ancienne sans
+     * billet). Devine la catégorie via la 1ère catégorie active de la soirée — risque d'erreur si la
+     * soirée a plusieurs catégories actives. Le cas nominal résout désormais la catégorie
+     * directement via {@link Reservation#getCategorie()}, stockée dès la création.
+     */
     private CategorieTicket trouverCategoriePourReservation(Reservation reservation) {
-        // La catégorie n'est pas stockée sur Reservation (elle l'est sur chaque Ticket) ;
-        // avant génération des tickets on la retrouve via la 1ère catégorie active de la soirée
-        // correspondant au montant unitaire — limitation acceptable pour le MVP (1 catégorie
-        // active par soirée dans le cas courant). À affiner si plusieurs catégories concurrentes.
+        log.warn("Réservation {} sans catégorie stockée, repli sur la 1ère catégorie de la soirée — "
+                + "risque d'erreur si plusieurs catégories", reservation.getId());
         return categorieTicketRepository.findBySoireeId(reservation.getSoiree().getId()).stream()
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Catégorie de ticket introuvable pour la soirée"));
+    }
+
+    /**
+     * Valide et normalise les bénéficiaires (un numéro par billet) — AUCUN effet de bord, à appeler
+     * avant toute incrémentation de places ou tout paiement. Les messages nomment le numéro
+     * (masqué) sans jamais révéler à qui il appartient.
+     */
+    private List<BeneficiaireNormalise> preparerBeneficiaires(UUID soireeId, int nbPlaces,
+                                                              List<BeneficiaireBilletRequest> demandes) {
+        if (demandes == null || demandes.size() != nbPlaces) {
+            throw new ValidationMetierException("Il faut renseigner exactement un numéro de téléphone par billet : "
+                    + nbPlaces + " place(s) demandée(s) pour " + (demandes == null ? 0 : demandes.size())
+                    + " numéro(s) fourni(s).");
+        }
+
+        List<BeneficiaireNormalise> resultat = new ArrayList<>();
+        Set<String> vus = new LinkedHashSet<>();
+        for (int i = 0; i < demandes.size(); i++) {
+            BeneficiaireBilletRequest demande = demandes.get(i);
+            String telephone = demande == null || demande.telephone() == null
+                    ? null : SmsGateway.normaliserTelephone(demande.telephone());
+            if (telephone == null || !TELEPHONE_E164.matcher(telephone).matches()) {
+                throw new ValidationMetierException("Le numéro de téléphone du billet " + (i + 1) + " est invalide.");
+            }
+            if (!vus.add(telephone)) {
+                throw new ValidationMetierException("Un même numéro est saisi plusieurs fois : chaque billet doit avoir "
+                        + "son propre numéro de téléphone.");
+            }
+            String nom = demande.nom() == null || demande.nom().isBlank() ? null : demande.nom().trim();
+            resultat.add(new BeneficiaireNormalise(i, nom, telephone));
+        }
+
+        // Un numéro ne peut avoir qu'UN billet actif par soirée, toutes réservations/catégories confondues :
+        // billets déjà émis (y compris legacy, qui portent le téléphone du réservant)...
+        List<String> dejaSurUnBillet = ticketRepository.findTelephonesPortesParBilletActif(
+                soireeId, vus, STATUTS_TICKET_LIBERES);
+        // ... et bénéficiaires actifs d'une autre réservation (y compris PENDING non expirées).
+        List<String> dejaBeneficiaire = reservationBeneficiaireRepository.findTelephonesActifs(soireeId, vus);
+        for (String telephone : vus) {
+            if (dejaSurUnBillet.contains(telephone) || dejaBeneficiaire.contains(telephone)) {
+                // Message volontairement générique : ne nomme aucun numéro, ne révèle rien sur son porteur.
+                throw new ConflitEtatException("L'un des numéros saisis est déjà utilisé pour un billet de cette "
+                        + "soirée. Un numéro ne peut avoir qu'un seul billet par soirée : utilisez un autre numéro.");
+            }
+        }
+        return resultat;
+    }
+
+    /**
+     * Persiste les bénéficiaires (flush immédiat). Une violation concurrente de l'index unique partiel
+     * (course entre deux réservations) devient un conflit métier propre ; la transaction est annulée
+     * (places pré-réservées comprises).
+     */
+    private void enregistrerBeneficiaires(Reservation reservation, List<BeneficiaireNormalise> beneficiaires) {
+        List<ReservationBeneficiaire> entites = beneficiaires.stream()
+                .map(b -> ReservationBeneficiaire.builder()
+                        .reservationId(reservation.getId())
+                        .soireeId(reservation.getSoiree().getId())
+                        .position((short) b.position())
+                        .nom(b.nom())
+                        .telephone(b.telephone())
+                        .actif(true)
+                        .build())
+                .toList();
+        try {
+            reservationBeneficiaireRepository.saveAllAndFlush(entites);
+        } catch (DataIntegrityViolationException e) {
+            // Jamais le message SQL (il recopie le numéro) : identifiant de réservation et nom de contrainte seulement.
+            log.warn("Conflit d'unicité concurrent sur les bénéficiaires (réservation {}, contrainte {})",
+                    reservation.getId(), ContrainteBd.nom(e));
+            throw new ConflitEtatException("Un des numéros saisis vient d'être utilisé pour un autre billet de cette "
+                    + "soirée. Vérifiez vos numéros (un numéro ne peut avoir qu'un seul billet par soirée) et réessayez.");
+        }
     }
 
     private void genererTickets(Reservation reservation, CategorieTicket categorie) {
@@ -292,14 +524,23 @@ public class BilletterieService {
             log.info("Billets déjà émis pour la réservation {} — ignoré", reservation.getId());
             return;
         }
+        // Le i-ème billet porte le numéro du i-ème bénéficiaire (ordre "position"). Réservation legacy
+        // sans bénéficiaire enregistré : comportement historique conservé (numéro du réservant).
+        List<ReservationBeneficiaire> beneficiaires =
+                reservationBeneficiaireRepository.findByReservationIdOrderByPositionAsc(reservation.getId());
         List<QRCodeTicket> qrCodesGeneres = new ArrayList<>();
         for (int i = 0; i < reservation.getNbPlaces(); i++) {
+            ReservationBeneficiaire beneficiaire = i < beneficiaires.size() ? beneficiaires.get(i) : null;
+            String nomSpectateur = beneficiaire != null && beneficiaire.getNom() != null && !beneficiaire.getNom().isBlank()
+                    ? beneficiaire.getNom() : reservation.getNomReservant();
+            String telephoneSpectateur = beneficiaire != null
+                    ? beneficiaire.getTelephone() : reservation.getTelephoneReservant();
             Ticket ticket = Ticket.builder()
                     .reservation(reservation)
                     .soiree(reservation.getSoiree())
                     .categorie(categorie)
-                    .nomSpectateur(reservation.getNomReservant())
-                    .telephoneSpectateur(reservation.getTelephoneReservant())
+                    .nomSpectateur(nomSpectateur)
+                    .telephoneSpectateur(telephoneSpectateur)
                     .statut(StatutTicket.EMIS)
                     .build();
             ticket = ticketRepository.save(ticket);
@@ -321,7 +562,7 @@ public class BilletterieService {
     }
 
     /**
-     * Correctif retour client (14/09/2026) : l'e-mail de billets utilisait du HTML brut sans
+     * Correctif retour client : l'e-mail de billets utilisait du HTML brut sans
      * le template validé (logo NKS), ne joignait aucune image de billet et ne mentionnait pas
      * l'espace "Mes tickets". On reconstruit désormais le message avec le template partagé
      * {@link NotificationService#construireEmailHtml}, on joint une image PNG par billet
@@ -541,19 +782,30 @@ public class BilletterieService {
         if (ticketsEmis.isEmpty()) {
             return;
         }
+        libererAppareils(ticketsEmis); // avant le changement de statut : seuls les billets non UTILISE sont concernés
         ticketsEmis.forEach(t -> t.setStatut(StatutTicket.EXPIRE));
         ticketRepository.saveAll(ticketsEmis);
+        // Le billet expire => sa place (numéro) est libérée. Le billet i porte le téléphone du bénéficiaire i.
+        ticketsEmis.forEach(t -> reservationBeneficiaireRepository.desactiverParReservationEtTelephone(
+                t.getReservation().getId(), t.getTelephoneSpectateur()));
         log.info("Soirée {} clôturée : {} billet(s) EMIS passé(s) à EXPIRE", soireeId, ticketsEmis.size());
     }
 
     @Transactional
     public Reservation genererTicketsGratuits(UUID soireeId, UUID categorieId, String nom, String telephone,
-                                               int nbPlaces, Utilisateur admin) {
+                                               int nbPlaces, List<BeneficiaireBilletRequest> beneficiairesRequest,
+                                               Utilisateur admin) {
         CategorieTicket categorie = categorieTicketRepository.findByIdForUpdate(categorieId)
                 .orElseThrow(() -> new ResourceNotFoundException("Catégorie introuvable"));
 
+        // Même règle que la réservation publique : un numéro distinct par billet, validé AVANT tout effet de bord.
+        verrouillerSoiree(categorie.getSoiree().getId());
+        List<BeneficiaireNormalise> beneficiaires = preparerBeneficiaires(
+                categorie.getSoiree().getId(), nbPlaces, beneficiairesRequest);
+
         Reservation reservation = Reservation.builder()
                 .soiree(categorie.getSoiree())
+                .categorie(categorie)
                 .telephoneReservant(SmsGateway.normaliserTelephone(telephone))
                 .nomReservant(nom)
                 .nbPlaces(nbPlaces)
@@ -565,6 +817,7 @@ public class BilletterieService {
         categorie.setNbPlacesReservees(categorie.getNbPlacesReservees() + nbPlaces);
         categorieTicketRepository.save(categorie);
         reservation = reservationRepository.save(reservation);
+        enregistrerBeneficiaires(reservation, beneficiaires);
 
         genererTickets(reservation, categorie);
         return reservation;

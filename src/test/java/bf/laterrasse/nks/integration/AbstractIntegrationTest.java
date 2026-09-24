@@ -37,8 +37,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -56,14 +54,19 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-@Testcontainers
 public abstract class AbstractIntegrationTest {
 
-    @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("nks_test")
             .withUsername("nks_test")
             .withPassword("nks_test");
+
+    // Conteneur SINGLETON demarre une seule fois pour toute la JVM de test (arrete par Ryuk a la fin). Avec
+    // @Testcontainers/@Container statique il serait redemarre (autre port) a chaque classe de test alors que
+    // le contexte Spring est mis en cache : toutes les classes suivantes echoueraient a se connecter.
+    static {
+        POSTGRES.start();
+    }
 
     @DynamicPropertySource
     static void datasourceProperties(DynamicPropertyRegistry registry) {

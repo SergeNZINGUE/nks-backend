@@ -55,7 +55,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException ex) {
-        log.warn("Violation de contrainte base de données : {}", ex.getMostSpecificCause().getMessage());
+        // Jamais le message SQL : il recopie les valeurs de la ligne (ex. un numéro de téléphone complet).
+        log.warn("Violation de contrainte base de données : contrainte={}", ContrainteBd.nom(ex));
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiError.of("CONTRAINTE_VIOLEE", "Cette opération viole une contrainte de données (doublon ou référence invalide)"));
     }

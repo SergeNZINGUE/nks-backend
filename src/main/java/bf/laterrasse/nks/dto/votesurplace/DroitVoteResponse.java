@@ -20,7 +20,8 @@ public record DroitVoteResponse(
         int nbVotesDisponibles,
         int nbVotesTotal,
         List<VoteExprimeResponse> votesExprimes,
-        List<CandidatPublicResponse> candidats
+        List<CandidatPublicResponse> candidats,
+        boolean appareilDejaUtilise
 ) {
     public record VoteExprimeResponse(UUID candidatId, String candidatCode, Instant dateVote) {}
 
@@ -38,6 +39,15 @@ public record DroitVoteResponse(
         List<CandidatPublicResponse> candidats = nbDisponibles > 0
                 ? candidatsDisponibles.stream().map(CandidatPublicResponse::from).toList()
                 : List.of();
-        return new DroitVoteResponse(nomSpectateur, nbDisponibles, droits.size(), votesExprimes, candidats);
+        return new DroitVoteResponse(nomSpectateur, nbDisponibles, droits.size(), votesExprimes, candidats, false);
+    }
+
+    /**
+     * {@code appareilDejaUtilise} : true si l'appareil (jeton {@code X-Appareil-Token} valide) a déjà
+     * servi à voter pour un AUTRE billet de cette soirée — permet au frontend de bloquer tôt.
+     */
+    public DroitVoteResponse avecAppareilDejaUtilise(boolean appareilDejaUtilise) {
+        return new DroitVoteResponse(nomSpectateur, nbVotesDisponibles, nbVotesTotal, votesExprimes,
+                candidats, appareilDejaUtilise);
     }
 }

@@ -26,8 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * uniquement à extraire sur disque le PNG produit par
  * {@link BilletterieService#genererImageBillet} (méthode privée, appelée par réflexion
  * pour ne rien changer à sa visibilité) afin de comparer visuellement le rendu serveur
- * au visuel de référence côté client (ticket-image.service.ts). Correctif retour client
- * (14/09/2026) : "les billets reçus par mail ne sont pas identiques au format téléchargeable".
+ * au visuel de référence côté client (ticket-image.service.ts). Correctif retour client :
+ * les billets reçus par e-mail doivent rester identiques au format téléchargeable.
  */
 class BilletterieServiceImageBilletDumpTest {
 
@@ -78,7 +78,7 @@ class BilletterieServiceImageBilletDumpTest {
                 .build();
 
         BilletterieService service = new BilletterieService(
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null);
 
         Method genererImageBillet = BilletterieService.class.getDeclaredMethod(
                 "genererImageBillet", Reservation.class, QRCodeTicket.class, int.class, int.class);

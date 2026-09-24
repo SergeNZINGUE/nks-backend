@@ -19,5 +19,9 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
 
     List<Reservation> findByStatutAndDateExpirationBefore(StatutReservation statut, Instant seuil);
 
+    /** Plafond de pré-réservations en attente par payeur et par soirée (anti-blocage de numéros/places). */
+    long countByTelephoneReservantAndSoireeIdAndStatutAndDateExpirationAfter(
+            String telephoneReservant, UUID soireeId, StatutReservation statut, Instant maintenant);
+
     Optional<Reservation> findByPaiementId(UUID paiementId);
 }

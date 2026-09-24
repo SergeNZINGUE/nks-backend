@@ -62,7 +62,8 @@ class DroitVoteSurPlaceUniqueConstraintTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> droitVoteSurPlaceRepository.save(deuxieme))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
-        assertThat(droitVoteSurPlaceRepository.count()).isEqualTo(1);
+        // Compte scope au billet : la base est partagee entre toutes les classes de test d'integration.
+        assertThat(droitVoteSurPlaceRepository.findByTicketIdOrderByDateEmissionAsc(qr.getTicket().getId())).hasSize(1);
     }
 
     @Test
@@ -95,7 +96,8 @@ class DroitVoteSurPlaceUniqueConstraintTest extends AbstractIntegrationTest {
         DroitVoteSurPlace savedBonus = droitVoteSurPlaceRepository.save(bonus);
 
         assertThat(savedBonus.getId()).isNotNull();
-        assertThat(droitVoteSurPlaceRepository.count()).isEqualTo(2);
+        // Compte scope au billet : la base est partagee entre toutes les classes de test d'integration.
+        assertThat(droitVoteSurPlaceRepository.findByTicketIdOrderByDateEmissionAsc(qr.getTicket().getId())).hasSize(2);
 
         DroitVoteSurPlace deuxiemeBonus = DroitVoteSurPlace.builder()
                 .ticket(qr.getTicket())
@@ -107,6 +109,7 @@ class DroitVoteSurPlaceUniqueConstraintTest extends AbstractIntegrationTest {
         DroitVoteSurPlace savedDeuxiemeBonus = droitVoteSurPlaceRepository.save(deuxiemeBonus);
 
         assertThat(savedDeuxiemeBonus.getId()).isNotNull();
-        assertThat(droitVoteSurPlaceRepository.count()).isEqualTo(3);
+        // Compte scope au billet : la base est partagee entre toutes les classes de test d'integration.
+        assertThat(droitVoteSurPlaceRepository.findByTicketIdOrderByDateEmissionAsc(qr.getTicket().getId())).hasSize(3);
     }
 }

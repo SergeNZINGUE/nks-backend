@@ -34,12 +34,20 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Concurrency tests for invariants #1 and #2 of the anti-fraud spec: two real threads, two
  * real transactions, hitting a real PostgreSQL instance (Testcontainers) at the same time.
  * These reproduce, as closely as a JVM test can, the two-hotesses-at-the-same-time and
- * two-taps-on-the-vote-link scenarios described in the handoff doc.
+ * two-taps-on-the-vote-link scenarios the anti-fraud spec is meant to cover.
  */
 class VoteSurPlaceConcurrencyTest extends AbstractIntegrationTest {
 
     @Autowired
     private VoteSurPlaceService voteSurPlaceService;
+
+    @Autowired
+    private bf.laterrasse.nks.service.AppareilVoteService appareilVoteService;
+
+    private bf.laterrasse.nks.service.AppareilVoteService.ContexteAppareil nouvelAppareil() {
+        return new bf.laterrasse.nks.service.AppareilVoteService.ContexteAppareil(
+                appareilVoteService.emettre("10.0.0.9"), "10.0.0.9", "test-agent", null);
+    }
 
     @Test
     @DisplayName("Two concurrent validerConsommation() calls on the same ticket: exactly one DroitVoteSurPlace is ever persisted")
@@ -88,7 +96,8 @@ class VoteSurPlaceConcurrencyTest extends AbstractIntegrationTest {
 
         assertThat(succes).isEqualTo(1);
         assertThat(echecsAttendus).isEqualTo(1);
-        assertThat(droitVoteSurPlaceRepository.count()).isEqualTo(1);
+        // Compte scope au billet : la base est partagee entre toutes les classes de test d'integration.
+        assertThat(droitVoteSurPlaceRepository.findByTicketIdOrderByDateEmissionAsc(qr.getTicket().getId())).hasSize(1);
     }
 
     @Test
@@ -125,11 +134,11 @@ class VoteSurPlaceConcurrencyTest extends AbstractIntegrationTest {
 
         Runnable votantA = () -> {
             await(startLine);
-            voteSurPlaceService.voter(qrUuid, soireeId, candidatAId, null, null, null, null);
+            voteSurPlaceService.voter(qrUuid, soireeId, candidatAId, null, null, null, null, nouvelAppareil());
         };
         Runnable votantB = () -> {
             await(startLine);
-            voteSurPlaceService.voter(qrUuid, soireeId, candidatBId, null, null, null, null);
+            voteSurPlaceService.voter(qrUuid, soireeId, candidatBId, null, null, null, null, nouvelAppareil());
         };
 
         Future<?> f1 = pool.submit(votantA);

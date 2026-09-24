@@ -34,6 +34,15 @@ public class Reservation {
     @JoinColumn(name = "paiement_id")
     private Paiement paiement;
 
+    /**
+     * Catégorie de ticket réservée. Nullable : réservations legacy PENDING/EXPIREE sans
+     * billet, pour lesquelles la catégorie n'a pas pu être retrouvée par le backfill de la
+     * migration — voir BilletterieService.trouverCategoriePourReservation (repli de secours).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "categorie_id")
+    private CategorieTicket categorie;
+
     @Column(name = "telephone_reservant", nullable = false, length = 20)
     private String telephoneReservant;
 

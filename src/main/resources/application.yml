@@ -60,6 +60,12 @@ nks:
     # Obligatoire en production. Générer via `openssl rand -hex 32`.
     secret: ${TICKET_ACCESS_SECRET:}
 
+  vote:
+    # Secret HMAC dédié aux jetons d'appareil du vote sur place (blocage "un appareil = un billet").
+    # Ne JAMAIS réutiliser un autre secret (JWT staff, TICKET_ACCESS_SECRET...). La valeur par
+    # défaut n'est acceptée qu'en profil dev/test ; obligatoire en homol/prod (`openssl rand -hex 32`).
+    device-secret: ${NKS_VOTE_DEVICE_SECRET:dev-only-vote-device-secret-change-me-in-prod}
+
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:4200}  # dev uniquement — FRONTEND_BASE_URL obligatoire en homol/prod

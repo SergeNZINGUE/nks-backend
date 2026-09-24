@@ -6,6 +6,7 @@ import bf.laterrasse.nks.dto.billetterie.ReservationPublicResponse;
 import bf.laterrasse.nks.dto.billetterie.ReservationRequest;
 import bf.laterrasse.nks.dto.billetterie.ReservationResponse;
 import bf.laterrasse.nks.dto.billetterie.TicketAvecQrResponse;
+import bf.laterrasse.nks.dto.billetterie.TicketsGratuitsRequest;
 import bf.laterrasse.nks.dto.votesurplace.ReconciliationVoteResponse;
 import bf.laterrasse.nks.gateway.sms.SmsGateway;
 import bf.laterrasse.nks.repository.CategorieTicketRepository;
@@ -24,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -102,15 +102,11 @@ public class BilletterieController {
     @PostMapping("/admin/billetterie/tickets-gratuits")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Transactional
-    public ResponseEntity<ReservationPublicResponse> ticketsGratuits(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<ReservationPublicResponse> ticketsGratuits(@Valid @RequestBody TicketsGratuitsRequest body) {
         var admin = currentUserProvider.getCurrentUser();
-        UUID soireeId = UUID.fromString((String) body.get("soireeId"));
-        UUID categorieId = UUID.fromString((String) body.get("categorieId"));
-        String nom = (String) body.get("nom");
-        String telephone = (String) body.get("telephone");
-        int nbPlaces = ((Number) body.get("nbPlaces")).intValue();
         ReservationPublicResponse result = ReservationPublicResponse.from(
-                billetterieService.genererTicketsGratuits(soireeId, categorieId, nom, telephone, nbPlaces, admin));
+                billetterieService.genererTicketsGratuits(body.soireeId(), body.categorieId(), body.nom(),
+                        body.telephone(), body.nbPlaces(), body.beneficiaires(), admin));
         return ResponseEntity.status(201).body(result);
     }
 

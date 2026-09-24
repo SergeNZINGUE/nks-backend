@@ -9,15 +9,22 @@ import bf.laterrasse.nks.domain.SoireeEvent;
 import bf.laterrasse.nks.dto.billetterie.TicketAvecQrResponse;
 import bf.laterrasse.nks.exception.ApiError;
 import bf.laterrasse.nks.integration.AbstractIntegrationTest;
+import bf.laterrasse.nks.security.TicketAccessTokenService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import java.net.URI;
+import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,6 +40,9 @@ class ReservationTicketEndpointTest extends AbstractIntegrationTest {
 
     @Autowired
     private TestRestTemplate restTemplate;
+
+    @Autowired
+    private TicketAccessTokenService ticketAccessTokenService;
 
     @LocalServerPort
     private int port;
@@ -58,8 +68,8 @@ class ReservationTicketEndpointTest extends AbstractIntegrationTest {
         Reservation reservation = creerReservation(soiree, telephone, 1);
         QRCodeTicket qr = creerBilletComplet(soiree, categorie, reservation, telephone);
 
-        ResponseEntity<TicketAvecQrResponse[]> response = restTemplate.getForEntity(
-                url("/reservations/" + reservation.getId() + "/ticket?telephone=" + enc(telephone)),
+        ResponseEntity<TicketAvecQrResponse[]> response = getAvecJeton(
+                "/reservations/" + reservation.getId() + "/ticket", telephone, telephone,
                 TicketAvecQrResponse[].class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -80,8 +90,8 @@ class ReservationTicketEndpointTest extends AbstractIntegrationTest {
         QRCodeTicket qr2 = creerBilletComplet(soiree, categorie, reservation, telephone);
         QRCodeTicket qr3 = creerBilletComplet(soiree, categorie, reservation, telephone);
 
-        ResponseEntity<TicketAvecQrResponse[]> response = restTemplate.getForEntity(
-                url("/reservations/" + reservation.getId() + "/ticket?telephone=" + enc(telephone)),
+        ResponseEntity<TicketAvecQrResponse[]> response = getAvecJeton(
+                "/reservations/" + reservation.getId() + "/ticket", telephone, telephone,
                 TicketAvecQrResponse[].class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -98,12 +108,15 @@ class ReservationTicketEndpointTest extends AbstractIntegrationTest {
         Reservation reservation = creerReservation(soiree, bonTelephone, 1);
         creerBilletComplet(soiree, categorie, reservation, bonTelephone);
 
-        ResponseEntity<ApiError> reponseMauvaisTelephone = restTemplate.getForEntity(
-                url("/reservations/" + reservation.getId() + "/ticket?telephone=" + enc(randomPhone())),
+        // Jetons phone-wide valides (comme apres l'OTP) pour que la requete atteigne bien la verification
+        // metier du service : c'est elle qui ne doit pas servir d'oracle d'existence.
+        String mauvaisTelephone = randomPhone();
+        ResponseEntity<ApiError> reponseMauvaisTelephone = getAvecJeton(
+                "/reservations/" + reservation.getId() + "/ticket", mauvaisTelephone, mauvaisTelephone,
                 ApiError.class);
 
-        ResponseEntity<ApiError> reponseReservationInexistante = restTemplate.getForEntity(
-                url("/reservations/" + UUID.randomUUID() + "/ticket?telephone=" + enc(bonTelephone)),
+        ResponseEntity<ApiError> reponseReservationInexistante = getAvecJeton(
+                "/reservations/" + UUID.randomUUID() + "/ticket", bonTelephone, bonTelephone,
                 ApiError.class);
 
         assertThat(reponseMauvaisTelephone.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
@@ -113,6 +126,20 @@ class ReservationTicketEndpointTest extends AbstractIntegrationTest {
         assertThat(reponseReservationInexistante.getBody()).isNotNull();
         assertThat(reponseReservationInexistante.getBody().code()).isEqualTo(reponseMauvaisTelephone.getBody().code());
         assertThat(reponseReservationInexistante.getBody().message()).isEqualTo(reponseMauvaisTelephone.getBody().message());
+    }
+
+    /**
+     * GET /reservations/{id}/ticket exige desormais un jeton d'acces billets (correctif IDOR) : on emet ici un
+     * jeton phone-wide "read" pour {@code telephoneDuJeton}. L'URI est passee deja encodee (%2B) pour eviter
+     * le double encodage par les URI templates de RestTemplate.
+     */
+    private <T> ResponseEntity<T> getAvecJeton(String path, String telephoneDuJeton, String telephoneRequete,
+                                               Class<T> type) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Ticket-Access-Token", ticketAccessTokenService.emettre(
+                telephoneDuJeton, Set.of("read"), null, Duration.ofMinutes(5)));
+        return restTemplate.exchange(URI.create(url(path + "?telephone=" + enc(telephoneRequete))),
+                HttpMethod.GET, new HttpEntity<>(headers), type);
     }
 
     private static String enc(String value) {

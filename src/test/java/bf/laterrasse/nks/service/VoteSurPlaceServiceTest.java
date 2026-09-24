@@ -64,6 +64,7 @@ class VoteSurPlaceServiceTest {
     @Mock private WhatsappGateway whatsappGateway;
     @Mock private ScanService scanService;
     @Mock private TicketRepository ticketRepository;
+    @Mock private AppareilVoteService appareilVoteService;
 
     private VoteSurPlaceService service;
 
@@ -75,8 +76,12 @@ class VoteSurPlaceServiceTest {
     void setUp() {
         service = new VoteSurPlaceService(qrCodeTicketRepository, droitVoteSurPlaceRepository,
                 soireeEventRepository, candidatRepository, voteRepository, affectationPouleRepository,
-                duoRepository, whatsappGateway, scanService, ticketRepository);
+                duoRepository, whatsappGateway, scanService, ticketRepository, appareilVoteService);
         ReflectionTestUtils.setField(service, "frontendBaseUrl", "http://localhost:4200");
+    }
+
+    private AppareilVoteService.ContexteAppareil appareil() {
+        return new AppareilVoteService.ContexteAppareil("jeton-de-test", "10.0.0.1", "test-agent", null);
     }
 
     private SoireeEvent soiree() {
@@ -105,7 +110,7 @@ class VoteSurPlaceServiceTest {
 
         when(droitVoteSurPlaceRepository.findDisponiblesByTicketIdForUpdate(ticketId)).thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.voter(qrUuid, soireeId, UUID.randomUUID(), null, null, null, null))
+        assertThatThrownBy(() -> service.voter(qrUuid, soireeId, UUID.randomUUID(), null, null, null, null, appareil()))
                 .isInstanceOf(ConflitEtatException.class)
                 .hasMessageContaining("déjà utilisé tous tes votes");
 
@@ -138,7 +143,7 @@ class VoteSurPlaceServiceTest {
         when(droitVoteSurPlaceRepository.save(any(DroitVoteSurPlace.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.voter(qrUuid, soireeId, candidatId, "+22670009999", null, null, null);
+        service.voter(qrUuid, soireeId, candidatId, "+22670009999", null, null, null, appareil());
 
         verify(voteRepository, org.mockito.Mockito.times(1)).save(any());
 
