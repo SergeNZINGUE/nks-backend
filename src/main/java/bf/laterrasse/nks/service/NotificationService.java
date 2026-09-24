@@ -47,9 +47,23 @@ public class NotificationService {
      */
     @Transactional
     public void envoyerSms(Utilisateur destinataire, String telephone, TypeNotification type, String message) {
+        envoyerSms(destinataire, telephone, type, message, "karaoke_info", List.of(message));
+    }
+
+    /**
+     * Variante avec template WhatsApp dédié (catégorie UTILITY chez Meta, moins soumis au
+     * plafonnement de délivrabilité que le template générique "karaoke_info" classé
+     * MARKETING) — réservée aux messages dont la forme correspond exactement à un template
+     * pré-approuvé (nombre de billets, nombre de votes...). {@code message} reste le texte
+     * intégral archivé dans {@code notifications.corps_message} et utilisé tel quel pour le
+     * repli SMS (qui ne connaît pas la notion de template).
+     */
+    @Transactional
+    public void envoyerSms(Utilisateur destinataire, String telephone, TypeNotification type, String message,
+                            String templateWhatsapp, List<String> variablesWhatsapp) {
         try {
             String reference = whatsappGateway.envoyer(
-                    SmsGateway.normaliserTelephone(telephone), "karaoke_info", List.of(message));
+                    SmsGateway.normaliserTelephone(telephone), templateWhatsapp, variablesWhatsapp);
             Notification notification = Notification.builder()
                     .utilisateur(destinataire)
                     .telephoneDestinataire(telephone)
@@ -63,8 +77,8 @@ public class NotificationService {
             notificationRepository.save(notification);
             return;
         } catch (Exception e) {
-            log.warn("Échec envoi WhatsApp pour {} (type {}), fallback SMS : {}",
-                    telephone, type, e.getMessage());
+            log.warn("Échec envoi WhatsApp pour {} (type {}, template {}), fallback SMS : {}",
+                    telephone, type, templateWhatsapp, e.getMessage());
         }
 
         Notification notification = Notification.builder()

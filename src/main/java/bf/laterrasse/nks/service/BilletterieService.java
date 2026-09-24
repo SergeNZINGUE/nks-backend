@@ -555,7 +555,8 @@ public class BilletterieService {
 
         notificationService.envoyerSms(null, reservation.getTelephoneReservant(), TypeNotification.BILLET_EMIS,
                 "NKS : votre paiement est confirmé ! Vos " + reservation.getNbPlaces()
-                        + " billet(s) sont disponibles sur le site avec votre numéro de téléphone.");
+                        + " billet(s) sont disponibles sur le site avec votre numéro de téléphone.",
+                "ticket_paid", List.of(String.valueOf(reservation.getNbPlaces())));
         if (reservation.getEmailReservant() != null) {
             envoyerEmailBillets(reservation, qrCodesGeneres);
         }

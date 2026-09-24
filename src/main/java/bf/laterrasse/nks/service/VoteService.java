@@ -119,7 +119,8 @@ public class VoteService {
                 }
             }
             notificationService.envoyerSms(null, vp.getTelephoneVotant(), TypeNotification.PAIEMENT_CONFIRME,
-                    "NKS : merci ! Vos " + vp.getNombreVotesAchetes() + " votes ont été crédités.");
+                    "NKS : merci ! Vos " + vp.getNombreVotesAchetes() + " votes ont été crédités.",
+                    "votes_credited", List.of(String.valueOf(vp.getNombreVotesAchetes())));
 
             // Déclencher le recalcul du classement après commit (afterCommit garantit que
             // le paiement COMPLETED est visible par la nouvelle transaction du listener).
