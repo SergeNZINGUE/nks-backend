@@ -203,6 +203,19 @@
                 </configuration>
             </plugin>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Byte Buddy ne supporte officiellement que Java ≤ 23 ; le mode
+                         expérimental active le support des versions ultérieures (Java 24+). -->
+                    <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+                    <!-- Les tests Testcontainers nécessitent Docker — ignorés si absent. -->
+                    <excludes>
+                        <exclude>**/integration/**/*Test.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
