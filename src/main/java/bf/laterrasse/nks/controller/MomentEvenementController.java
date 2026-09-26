@@ -96,4 +96,11 @@ public class MomentEvenementController {
     public ResponseEntity<MomentEvenementResponse> mettreALaUne(@PathVariable UUID id) {
         return ResponseEntity.ok(momentService.mettreALaUne(id));
     }
+
+    @DeleteMapping("/admin/moments-evenement/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
+    public ResponseEntity<Void> supprimerParAdmin(@PathVariable UUID id) {
+        momentService.supprimerParAdmin(id);
+        return ResponseEntity.noContent().build();
+    }
 }

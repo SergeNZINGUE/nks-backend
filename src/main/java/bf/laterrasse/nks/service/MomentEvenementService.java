@@ -91,6 +91,10 @@ public class MomentEvenementService {
         momentRepository.delete(moment);
     }
 
+    public void supprimerParAdmin(UUID id) {
+        momentRepository.delete(getOrThrow(id));
+    }
+
     public List<MomentEvenementResponse> listerPourCandidat(UUID utilisateurId) {
         Candidat candidat = candidatRepository.findByUtilisateurId(utilisateurId)
                 .orElseThrow(() -> new AccesRefuseException("Aucun profil candidat pour cet utilisateur"));
