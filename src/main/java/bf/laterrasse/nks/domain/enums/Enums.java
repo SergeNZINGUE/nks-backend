@@ -46,6 +46,16 @@ public final class Enums {
         PHOTO_PROFIL, CAPTURE_SOCIAL
     }
 
+    /**
+     * Type d'un "moment de l'événement" (table dédiée moments_evenement, distincte de
+     * medias/videos — cf. MomentEvenement pour le pourquoi). Vocabulaire volontairement
+     * différent de TypeMedia : ce n'est pas une photo de profil ni une capture, juste
+     * photo/vidéo souvenir.
+     */
+    public enum TypeMoment {
+        PHOTO, VIDEO
+    }
+
     public enum StatutMedia {
         EN_ATTENTE, VALIDE, MASQUE
     }
@@ -133,7 +143,9 @@ public final class Enums {
     public enum TypeNotification {
         CANDIDATURE_RECUE, CANDIDATURE_VALIDEE, CANDIDATURE_REJETEE, PAIEMENT_CONFIRME,
         PAIEMENT_ECHOUE, CONVOCATION, RESULTAT_PHASE, REPECHAGE, BILLET_EMIS, PROFIL_ACTIVE,
-        OTP_VERIFICATION
+        OTP_VERIFICATION,
+        // "Moments de l'événement" — canal IN_APP uniquement (cf. NotificationService.envoyerInApp).
+        MOMENT_A_MODERER, MOMENT_VALIDE, MOMENT_REJETE, MOMENT_A_LA_UNE
     }
 
     public enum TypeValeurParametre {

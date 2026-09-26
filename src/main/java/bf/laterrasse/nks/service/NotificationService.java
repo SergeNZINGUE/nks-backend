@@ -39,6 +39,31 @@ public class NotificationService {
     private final EmailGateway emailGateway;
 
     /**
+     * Notification in-app pure — canal {@link CanalNotification#IN_APP}, jamais envoyée
+     * "en dehors" de l'app (pas de SMS/e-mail en doublon, cf. décision produit sur
+     * "Moments de l'événement" : l'e-mail reste réservé aux billets et aux communications
+     * groupées explicites). Persister LA ligne suffit à "l'envoyer" : rien à transmettre
+     * à un gateway externe, donc pas de retry {@link AsyncNotificationSender} nécessaire —
+     * {@code statutEnvoi} passe directement à ENVOYE. {@code destinataire} null (ex. un
+     * moment ajouté par un admin sans candidat associé) ne fait rien silencieusement.
+     */
+    @Transactional
+    public void envoyerInApp(Utilisateur destinataire, TypeNotification type, String corps) {
+        if (destinataire == null) {
+            return;
+        }
+        Notification notification = Notification.builder()
+                .utilisateur(destinataire)
+                .canal(CanalNotification.IN_APP)
+                .typeNotification(type)
+                .corpsMessage(corps)
+                .statutEnvoi(StatutEnvoiNotification.ENVOYE)
+                .dateEnvoi(Instant.now())
+                .build();
+        notificationRepository.save(notification);
+    }
+
+    /**
      * WhatsApp est désormais le canal prioritaire pour toute notification "SMS" (demande
      * client du 13/09/2026) : tentative synchrone best-effort via {@link WhatsappGateway}
      * (même template générique "karaoke_info" que {@code VoteSurPlaceService}) ; le flux
