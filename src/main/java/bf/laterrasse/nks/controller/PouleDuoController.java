@@ -8,6 +8,7 @@ import bf.laterrasse.nks.domain.SoireeEvent;
 import bf.laterrasse.nks.dto.admin.AffecterPouleRequest;
 import bf.laterrasse.nks.dto.admin.RepechageRequest;
 import bf.laterrasse.nks.dto.poule.AffectationPouleResponse;
+import bf.laterrasse.nks.dto.poule.DuoResponse;
 import bf.laterrasse.nks.dto.poule.PouleResponse;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.repository.AffectationPouleRepository;
@@ -89,19 +90,25 @@ public class PouleDuoController {
 
     @PostMapping("/duos")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<Duo> creerDuo(@RequestBody Map<String, Object> body) {
+    @Transactional
+    public ResponseEntity<DuoResponse> creerDuo(@RequestBody Map<String, Object> body) {
         UUID phaseId = UUID.fromString((String) body.get("phaseId"));
         UUID candidat1Id = UUID.fromString((String) body.get("candidat1Id"));
         UUID candidat2Id = UUID.fromString((String) body.get("candidat2Id"));
         String chanson = (String) body.get("chansonCommune");
         UUID soireeId = body.get("soireeId") != null ? UUID.fromString((String) body.get("soireeId")) : null;
         return ResponseEntity.status(201).body(
-                competitionAdminService.creerDuo(phaseId, candidat1Id, candidat2Id, chanson, soireeId));
+                DuoResponse.from(competitionAdminService.creerDuo(phaseId, candidat1Id, candidat2Id, chanson, soireeId)));
     }
 
     @GetMapping("/duos/phase/{phaseId}")
-    public ResponseEntity<List<Duo>> duosPhase(@PathVariable UUID phaseId) {
-        return ResponseEntity.ok(duoRepository.findByPhaseId(phaseId));
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<DuoResponse>> duosPhase(@PathVariable UUID phaseId) {
+        return ResponseEntity.ok(
+                duoRepository.findByPhaseId(phaseId).stream()
+                        .map(DuoResponse::from)
+                        .toList()
+        );
     }
 
     @PutMapping("/poules/{id}")
