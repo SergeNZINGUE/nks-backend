@@ -152,7 +152,7 @@ public class JuryController {
     }
 
     @PutMapping("/soirees/{id}/arreter-votes")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Void> arreterVotes(@PathVariable UUID id) {
         juryService.arreterVotes(id);
         return ResponseEntity.noContent().build();
