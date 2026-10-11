@@ -97,15 +97,16 @@ public class PouleDuoController {
         UUID candidat2Id = UUID.fromString((String) body.get("candidat2Id"));
         String chanson = (String) body.get("chansonCommune");
         UUID soireeId = body.get("soireeId") != null ? UUID.fromString((String) body.get("soireeId")) : null;
-        return ResponseEntity.status(201).body(
-                DuoResponse.from(competitionAdminService.creerDuo(phaseId, candidat1Id, candidat2Id, chanson, soireeId)));
+        Duo created = competitionAdminService.creerDuo(phaseId, candidat1Id, candidat2Id, chanson, soireeId);
+        return ResponseEntity.status(201).body(DuoResponse.from(
+                duoRepository.findByIdWithDetails(created.getId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Duo introuvable"))));
     }
 
     @GetMapping("/duos/phase/{phaseId}")
-    @Transactional(readOnly = true)
     public ResponseEntity<List<DuoResponse>> duosPhase(@PathVariable UUID phaseId) {
         return ResponseEntity.ok(
-                duoRepository.findByPhaseId(phaseId).stream()
+                duoRepository.findByPhaseIdWithDetails(phaseId).stream()
                         .map(DuoResponse::from)
                         .toList()
         );
@@ -128,7 +129,10 @@ public class PouleDuoController {
             }
         }
         if (body.get("ordrePassage") instanceof Number n) duo.setOrdrePassage(n.shortValue());
-        return ResponseEntity.ok(DuoResponse.from(duoRepository.save(duo)));
+        duoRepository.save(duo);
+        return ResponseEntity.ok(DuoResponse.from(
+                duoRepository.findByIdWithDetails(id)
+                        .orElseThrow(() -> new ResourceNotFoundException("Duo introuvable"))));
     }
 
     @PutMapping("/poules/{id}")
