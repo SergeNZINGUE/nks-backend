@@ -111,6 +111,26 @@ public class PouleDuoController {
         );
     }
 
+    @PutMapping("/duos/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @Transactional
+    public ResponseEntity<DuoResponse> modifierDuo(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+        Duo duo = duoRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Duo introuvable"));
+        if (body.containsKey("chansonCommune")) duo.setChansonCommune((String) body.get("chansonCommune"));
+        if (body.containsKey("soireeId")) {
+            if (body.get("soireeId") instanceof String soireeIdStr && !soireeIdStr.isBlank()) {
+                SoireeEvent soiree = soireeEventRepository.findById(UUID.fromString(soireeIdStr))
+                        .orElseThrow(() -> new ResourceNotFoundException("Soirée introuvable"));
+                duo.setSoiree(soiree);
+            } else {
+                duo.setSoiree(null);
+            }
+        }
+        if (body.get("ordrePassage") instanceof Number n) duo.setOrdrePassage(n.shortValue());
+        return ResponseEntity.ok(DuoResponse.from(duoRepository.save(duo)));
+    }
+
     @PutMapping("/poules/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     @Transactional
