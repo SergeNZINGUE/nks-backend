@@ -63,7 +63,7 @@ public class EditionController {
     }
 
     @PostMapping("/{id}/phases")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     public ResponseEntity<Phase> creerPhase(@PathVariable UUID id, @RequestBody Phase phase) {
         Edition edition = editionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Édition introuvable"));
