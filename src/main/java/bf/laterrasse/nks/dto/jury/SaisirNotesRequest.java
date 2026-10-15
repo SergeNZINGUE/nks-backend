@@ -12,7 +12,7 @@ import java.util.UUID;
 public record SaisirNotesRequest(
         @NotNull UUID candidatId,
         @NotNull UUID soireeId,
-        @NotNull @Min(1) @Max(2) Integer numeroPassage,
+        @NotNull @Min(1) Integer numeroPassage,
         @NotEmpty @Valid List<NoteInput> notes
 ) {
 }

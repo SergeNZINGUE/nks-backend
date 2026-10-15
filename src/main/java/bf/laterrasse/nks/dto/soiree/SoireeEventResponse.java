@@ -16,6 +16,8 @@ public record SoireeEventResponse(
         boolean voteSurPlaceActif,
         UUID editionId,
         UUID phaseId,
+        String nomPhase,
+        int nombrePassages,
         Instant votesArretesLe,
         boolean deliberationVerrouilee
 ) {
@@ -31,6 +33,8 @@ public record SoireeEventResponse(
                 s.isVoteSurPlaceActif(),
                 s.getEdition().getId(),
                 s.getPhase().getId(),
+                s.getPhase().getNom().name(),
+                s.getPhase().getNombrePassages(),
                 s.getVotesArretesLe(),
                 s.isDeliberationVerrouilee());
     }

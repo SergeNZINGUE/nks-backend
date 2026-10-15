@@ -99,6 +99,11 @@ public class Phase {
     @Column(name = "date_limite_choix_titres")
     private Instant dateLimiteChoixTitres;
 
+    /** Nombre de passages de notation jury pour cette phase (ex. 2 pour les éliminatoires, 3 pour demi-finale/finale). */
+    @Column(name = "nombre_passages", nullable = false)
+    @Builder.Default
+    private int nombrePassages = 2;
+
     @PrePersist
     private void avantInsert() {
         if (statut == null) statut = StatutPhase.EN_ATTENTE;
