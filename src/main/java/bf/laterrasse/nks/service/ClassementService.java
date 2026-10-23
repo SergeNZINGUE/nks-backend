@@ -4,6 +4,7 @@ import bf.laterrasse.nks.domain.*;
 import bf.laterrasse.nks.domain.enums.Enums.NomPhase;
 import bf.laterrasse.nks.domain.enums.Enums.StatutProfilCandidat;
 import bf.laterrasse.nks.domain.enums.Enums.StatutQualification;
+import bf.laterrasse.nks.domain.enums.Enums.StatutSoiree;
 import bf.laterrasse.nks.event.ClassementRefreshEvent;
 import bf.laterrasse.nks.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -74,7 +76,8 @@ public class ClassementService {
         List<Candidat> candidats = candidatRepository.findAll().stream()
                 .filter(c -> c.getEdition().getId().equals(phase.getEdition().getId()))
                 .filter(c -> c.getStatutProfil() != StatutProfilCandidat.SUSPENDU
-                        && c.getStatutProfil() != StatutProfilCandidat.EN_ATTENTE)
+                        && c.getStatutProfil() != StatutProfilCandidat.EN_ATTENTE
+                        && c.getStatutProfil() != StatutProfilCandidat.ELIMINE)
                 .toList();
 
         // Vote public sur place : total à l'échelle de la soirée de CHAQUE candidat, pas de la
@@ -145,6 +148,9 @@ public class ClassementService {
         if (phase.getNom() == NomPhase.ELIMINATOIRES) {
             // Top 2 par poule → QUALIFIE, reste → ELIMINE (WF-08).
             appliquerQualificationParPoule(tousResultats, phase);
+        } else if (phase.getNom() == NomPhase.DEMI_FINALE) {
+            // Top 2 individuel par soirée (soirée du duo) → QUALIFIE, reste → ELIMINE.
+            appliquerQualificationParSoireeDuo(tousResultats, phase);
         } else {
             for (ResultatPhase r : tousResultats) {
                 if (r.getStatutQualification() == StatutQualification.EN_ATTENTE) {
@@ -154,6 +160,18 @@ public class ClassementService {
         }
 
         resultatPhaseRepository.saveAll(tousResultats);
+
+        if (phase.getNom() == NomPhase.DEMI_FINALE) {
+            // Une soirée peut avoir été clôturée avant que son classement ne produise des
+            // éliminés : on rattrape ici le passage du profil à ELIMINE (idempotent).
+            List<Duo> duosTermines = duoRepository.findByPhaseId(phase.getId()).stream()
+                    .filter(d -> d.getSoiree() != null && d.getSoiree().getStatut() == StatutSoiree.TERMINEE)
+                    .toList();
+            int nb = eliminerProfilsDuos(duosTermines);
+            if (nb > 0) {
+                log.info("Demi-finale {} : {} profil(s) passés à ELIMINE (soirées déjà TERMINEE)", phaseId, nb);
+            }
+        }
 
         log.info("Classement recalculé pour la phase {} ({} candidats dont {} gelés)", phaseId, tousResultats.size(), resultatsGeles.size());
         return tousResultats;
@@ -255,33 +273,111 @@ public class ClassementService {
     }
 
     /**
+     * Pour la phase DEMI_FINALE (en duos, mais classement individuel) : les 2 premiers de
+     * chaque soirée sont QUALIFIÉS, les suivants sont ÉLIMINÉS. La soirée d'un candidat est
+     * celle de son duo. Tant que la soirée n'est pas jouée (PLANIFIEE/ANNULEE), le statut reste
+     * EN_ATTENTE pour ne pas afficher d'éliminés à 0 point. Un candidat sans duo (ou dont le
+     * duo n'a pas de soirée) est ÉLIMINÉ. Mêmes règles de préservation que la poule.
+     */
+    private void appliquerQualificationParSoireeDuo(List<ResultatPhase> resultats, Phase phase) {
+        // Une seule requête pour toute la phase : un candidat présent dans plusieurs duos ne
+        // doit pas faire échouer le calcul (requête unitaire non unique).
+        Map<UUID, SoireeEvent> soireeParCandidat = new HashMap<>();
+        for (Duo duo : duoRepository.findByPhaseId(phase.getId())) {
+            if (duo.getSoiree() == null) continue;
+            for (Candidat c : List.of(duo.getCandidat1(), duo.getCandidat2())) {
+                SoireeEvent existante = soireeParCandidat.putIfAbsent(c.getId(), duo.getSoiree());
+                if (existante != null && !existante.getId().equals(duo.getSoiree().getId())) {
+                    log.warn("Candidat {} présent dans plusieurs duos de la phase {} : soirée {} retenue",
+                            c.getId(), phase.getId(), existante.getId());
+                }
+            }
+        }
+
+        Map<UUID, List<ResultatPhase>> parSoiree = resultats.stream()
+                .filter(r -> soireeParCandidat.containsKey(r.getCandidat().getId()))
+                .collect(Collectors.groupingBy(r -> soireeParCandidat.get(r.getCandidat().getId()).getId()));
+
+        int nbElimines = 0;
+        for (List<ResultatPhase> groupe : parSoiree.values()) {
+            StatutSoiree statutSoiree = soireeParCandidat.get(groupe.get(0).getCandidat().getId()).getStatut();
+            boolean soireeJouee = statutSoiree == StatutSoiree.EN_COURS || statutSoiree == StatutSoiree.TERMINEE;
+            List<ResultatPhase> triés = groupe.stream()
+                    .sorted(Comparator.comparing(ResultatPhase::getTotalPoints).reversed())
+                    .toList();
+            for (int i = 0; i < triés.size(); i++) {
+                ResultatPhase r = triés.get(i);
+                if (r.getStatutQualification() == StatutQualification.REPECHAGE) continue;
+                if (!soireeJouee) {
+                    r.setStatutQualification(StatutQualification.EN_ATTENTE);
+                    continue;
+                }
+                // Candidat déjà éliminé au niveau profil : ne pas recalculer sa qualification
+                if (r.getCandidat().getStatutProfil() == StatutProfilCandidat.ELIMINE) continue;
+                if (i < 2) {
+                    r.setStatutQualification(StatutQualification.QUALIFIE);
+                } else {
+                    r.setStatutQualification(StatutQualification.ELIMINE);
+                    nbElimines++;
+                }
+            }
+        }
+
+        // Candidats sans duo/soirée dans cette phase → éliminés (ResultatPhase uniquement)
+        resultats.stream()
+                .filter(r -> !soireeParCandidat.containsKey(r.getCandidat().getId()))
+                .filter(r -> r.getStatutQualification() != StatutQualification.REPECHAGE)
+                .forEach(r -> r.setStatutQualification(StatutQualification.ELIMINE));
+
+        log.info("Qualification par soirée (duos) : {} soirée(s), {} candidat(s) marqués ELIMINE (profil différé à TERMINEE)",
+                parSoiree.size(), nbElimines);
+    }
+
+    /**
      * Appelé lors du passage de la soirée à TERMINEE : traduit les StatutQualification.ELIMINE
      * en StatutProfilCandidat.ELIMINE pour les candidats de cette soirée. C'est à ce moment
      * seulement que les votes en ligne sont coupés et le badge affiché côté frontend.
+     * Couvre les soirées en poules et les soirées en duos.
      */
     @Transactional
     public void appliquerEliminationsStatutProfil(UUID soireeId) {
-        List<AffectationPoule> affectations = affectationPouleRepository.findByPouleSoireeId(soireeId);
-        if (affectations.isEmpty()) return;
+        Map<UUID, Candidat> aEliminer = new LinkedHashMap<>();
+        for (AffectationPoule aff : affectationPouleRepository.findByPouleSoireeId(soireeId)) {
+            basculerProfilSiElimine(aff.getCandidat(), aff.getPoule().getPhase().getId(), aEliminer);
+        }
+        int nb = aEliminer.size();
+        if (!aEliminer.isEmpty()) {
+            candidatRepository.saveAll(aEliminer.values());
+        }
+        nb += eliminerProfilsDuos(duoRepository.findBySoireeId(soireeId));
+        log.info("Soirée {} → TERMINEE : {} candidat(s) passés à StatutProfilCandidat.ELIMINE",
+                soireeId, nb);
+    }
 
-        List<Candidat> aEliminer = new ArrayList<>();
-        for (AffectationPoule aff : affectations) {
-            Candidat candidat = aff.getCandidat();
-            UUID phaseId = aff.getPoule().getPhase().getId();
-            resultatPhaseRepository.findByCandidatIdAndPhaseId(candidat.getId(), phaseId)
-                    .filter(r -> r.getStatutQualification() == StatutQualification.ELIMINE)
-                    .ifPresent(r -> {
-                        if (candidat.getStatutProfil() == StatutProfilCandidat.ACTIF) {
-                            candidat.setStatutProfil(StatutProfilCandidat.ELIMINE);
-                            aEliminer.add(candidat);
-                        }
-                    });
+    /** Applique le passage de profil ACTIF → ELIMINE aux deux candidats de chaque duo. Retourne le nombre de profils modifiés. */
+    private int eliminerProfilsDuos(List<Duo> duos) {
+        Map<UUID, Candidat> aEliminer = new LinkedHashMap<>();
+        for (Duo duo : duos) {
+            UUID phaseId = duo.getPhase().getId();
+            basculerProfilSiElimine(duo.getCandidat1(), phaseId, aEliminer);
+            basculerProfilSiElimine(duo.getCandidat2(), phaseId, aEliminer);
         }
         if (!aEliminer.isEmpty()) {
-            candidatRepository.saveAll(aEliminer);
+            candidatRepository.saveAll(aEliminer.values());
         }
-        log.info("Soirée {} → TERMINEE : {} candidat(s) passés à StatutProfilCandidat.ELIMINE",
-                soireeId, aEliminer.size());
+        return aEliminer.size();
+    }
+
+    /** Profil ACTIF dont le résultat de la phase est ELIMINE → profil ELIMINE (idempotent). */
+    private void basculerProfilSiElimine(Candidat candidat, UUID phaseId, Map<UUID, Candidat> aEliminer) {
+        resultatPhaseRepository.findByCandidatIdAndPhaseId(candidat.getId(), phaseId)
+                .filter(r -> r.getStatutQualification() == StatutQualification.ELIMINE)
+                .ifPresent(r -> {
+                    if (candidat.getStatutProfil() == StatutProfilCandidat.ACTIF) {
+                        candidat.setStatutProfil(StatutProfilCandidat.ELIMINE);
+                        aEliminer.put(candidat.getId(), candidat);
+                    }
+                });
     }
 
     private BigDecimal calculerPointsVotesEnLigne(Candidat candidat, Phase phase, long totalVoixPayantes) {
@@ -345,18 +441,27 @@ public class ClassementService {
 
     @Transactional
     public void gelerEliminationsSoiree(UUID soireeId) {
-        List<AffectationPoule> affectations = affectationPouleRepository.findByPouleSoireeId(soireeId);
-        for (AffectationPoule aff : affectations) {
-            Candidat candidat = aff.getCandidat();
-            UUID phaseId = aff.getPoule().getPhase().getId();
-            resultatPhaseRepository.findByCandidatIdAndPhaseId(candidat.getId(), phaseId)
-                    .filter(r -> r.getStatutQualification() == StatutQualification.ELIMINE)
-                    .ifPresent(r -> {
-                        r.setGele(true);
-                        r.setSoireeGelee(soireeEventRepository.getReferenceById(soireeId));
-                        resultatPhaseRepository.save(r);
-                    });
+        SoireeEvent soiree = soireeEventRepository.getReferenceById(soireeId);
+        // Via poules (ELIMINATOIRES)
+        for (AffectationPoule aff : affectationPouleRepository.findByPouleSoireeId(soireeId)) {
+            gelerSiElimine(aff.getCandidat(), aff.getPoule().getPhase().getId(), soiree);
         }
+        // Via duos (DEMI_FINALE)
+        for (Duo duo : duoRepository.findBySoireeId(soireeId)) {
+            UUID phaseId = duo.getPhase().getId();
+            gelerSiElimine(duo.getCandidat1(), phaseId, soiree);
+            gelerSiElimine(duo.getCandidat2(), phaseId, soiree);
+        }
+    }
+
+    private void gelerSiElimine(Candidat candidat, UUID phaseId, SoireeEvent soiree) {
+        resultatPhaseRepository.findByCandidatIdAndPhaseId(candidat.getId(), phaseId)
+                .filter(r -> r.getStatutQualification() == StatutQualification.ELIMINE)
+                .ifPresent(r -> {
+                    r.setGele(true);
+                    r.setSoireeGelee(soiree);
+                    resultatPhaseRepository.save(r);
+                });
     }
 
     /** Recalcul immédiat déclenché par la confirmation d'un paiement de vote (événement asynchrone). */
