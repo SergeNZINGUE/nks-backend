@@ -4,6 +4,7 @@ import bf.laterrasse.nks.domain.Candidat;
 import bf.laterrasse.nks.domain.Phase;
 import bf.laterrasse.nks.domain.Vote;
 import bf.laterrasse.nks.domain.VotePayant;
+import bf.laterrasse.nks.domain.enums.Enums.StatutEdition;
 import bf.laterrasse.nks.domain.enums.Enums.StatutProfilCandidat;
 import bf.laterrasse.nks.domain.enums.Enums.TypeNotification;
 import bf.laterrasse.nks.domain.enums.Enums.TypePaiement;
@@ -61,6 +62,9 @@ public class VoteService {
         Phase phase = phaseRepository.findById(request.phaseId())
                 .orElseThrow(() -> new ResourceNotFoundException("Phase introuvable"));
 
+        if (phase.getEdition().getStatut() == StatutEdition.TERMINEE) {
+            throw new ConflitEtatException("L'édition est terminée, les votes ne sont plus acceptés");
+        }
         if (candidat.getStatutProfil() != StatutProfilCandidat.ACTIF) {
             throw new ValidationMetierException("Ce candidat n'est pas actif");
         }
