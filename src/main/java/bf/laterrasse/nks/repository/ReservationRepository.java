@@ -15,6 +15,9 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
 
     List<Reservation> findByTelephoneReservant(String telephone);
 
+    List<Reservation> findByTelephoneReservantAndSoireeDateHeureGreaterThanEqual(
+            String telephone, Instant seuil);
+
     Page<Reservation> findBySoireeId(UUID soireeId, Pageable pageable);
 
     List<Reservation> findByStatutAndDateExpirationBefore(StatutReservation statut, Instant seuil);

@@ -24,6 +24,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -67,7 +70,9 @@ public class BilletterieController {
         // le jeton reservation-scoped du post-achat ne couvre pas la liste complète.
         ticketAccessTokenService.verifier(accessToken, "read", telephoneNormalise, null);
 
-        List<ReservationPublicResponse> result = reservationRepository.findByTelephoneReservant(telephoneNormalise)
+        Instant debutJour = LocalDate.now(ZoneOffset.UTC).atStartOfDay().toInstant(ZoneOffset.UTC);
+        List<ReservationPublicResponse> result = reservationRepository
+                .findByTelephoneReservantAndSoireeDateHeureGreaterThanEqual(telephoneNormalise, debutJour)
                 .stream()
                 .map(ReservationPublicResponse::from)
                 .toList();
