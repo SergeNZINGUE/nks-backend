@@ -40,6 +40,10 @@ public interface VoteRepository extends JpaRepository<Vote, UUID> {
     @Query("SELECT COALESCE(SUM(v.nombreVoix), 0) FROM Vote v WHERE v.phase.id = :phaseId AND v.typeVote IN :types")
     long totalVoixPourPhaseEtTypes(UUID phaseId, List<TypeVote> types);
 
+    /** Total de voix reçues par un candidat toutes phases et tous types confondus. */
+    @Query("SELECT COALESCE(SUM(v.nombreVoix), 0) FROM Vote v WHERE v.candidat.id = :candidatId")
+    long totalVoixCandidat(UUID candidatId);
+
     long countBySourceTelephoneAndTypeVoteAndDateVoteAfter(String sourceTelephone, TypeVote typeVote, Instant since);
 
     boolean existsBySourceExterneId(String sourceExterneId);

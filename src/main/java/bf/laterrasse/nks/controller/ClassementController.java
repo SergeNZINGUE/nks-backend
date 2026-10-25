@@ -8,6 +8,7 @@ import bf.laterrasse.nks.exception.ResourceNotFoundException;
 import bf.laterrasse.nks.repository.ClassementRepository;
 import bf.laterrasse.nks.repository.EditionRepository;
 import bf.laterrasse.nks.repository.ResultatPhaseRepository;
+import bf.laterrasse.nks.repository.VoteRepository;
 import bf.laterrasse.nks.service.ClassementService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +28,7 @@ public class ClassementController {
     private final ClassementRepository classementRepository;
     private final ResultatPhaseRepository resultatPhaseRepository;
     private final EditionRepository editionRepository;
+    private final VoteRepository voteRepository;
 
     @GetMapping("/classement")
     @Transactional(readOnly = true)
@@ -35,7 +37,7 @@ public class ClassementController {
                 .orElseThrow(() -> new ResourceNotFoundException("Aucune édition en cours"));
         List<ClassementResponse> result = classementRepository
                 .findByEditionIdOrderByRangGlobalAsc(edition.getId()).stream()
-                .map(ClassementResponse::from)
+                .map(c -> ClassementResponse.from(c, voteRepository.totalVoixCandidat(c.getCandidat().getId())))
                 .toList();
         return ResponseEntity.ok(result);
     }
