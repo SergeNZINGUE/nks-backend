@@ -15,9 +15,10 @@ public record ClassementResponse(
         Integer rangGlobal,
         boolean officiel,
         Instant dateDerniereMiseAJour,
-        String statutProfil
+        String statutProfil,
+        long totalVotes
 ) {
-    public static ClassementResponse from(Classement c) {
+    public static ClassementResponse from(Classement c, long totalVotes) {
         return new ClassementResponse(
                 c.getId(),
                 c.getCandidat().getId(),
@@ -27,6 +28,7 @@ public record ClassementResponse(
                 c.getRangGlobal(),
                 c.isOfficiel(),
                 c.getDateDerniereMiseAJour(),
-                c.getCandidat().getStatutProfil().name());
+                c.getCandidat().getStatutProfil().name(),
+                totalVotes);
     }
 }

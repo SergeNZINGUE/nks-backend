@@ -1,9 +1,14 @@
 package bf.laterrasse.nks.controller;
 
+import bf.laterrasse.nks.domain.Edition;
 import bf.laterrasse.nks.domain.Phase;
 import bf.laterrasse.nks.domain.SoireeEvent;
 import bf.laterrasse.nks.domain.enums.Enums.StatutSoiree;
+import bf.laterrasse.nks.domain.enums.Enums.TypeSoiree;
+import bf.laterrasse.nks.dto.soiree.SoireeEventResponse;
 import bf.laterrasse.nks.exception.ResourceNotFoundException;
+import bf.laterrasse.nks.exception.ValidationMetierException;
+import bf.laterrasse.nks.repository.EditionRepository;
 import bf.laterrasse.nks.repository.PhaseRepository;
 import bf.laterrasse.nks.repository.SoireeEventRepository;
 import bf.laterrasse.nks.service.BilletterieService;
@@ -25,27 +30,43 @@ public class SoireeController {
 
     private final SoireeEventRepository soireeEventRepository;
     private final PhaseRepository phaseRepository;
+    private final EditionRepository editionRepository;
     private final BilletterieService billetterieService;
     private final ClassementService classementService;
 
     @GetMapping
     @Transactional(readOnly = true)
-    public ResponseEntity<List<SoireeEvent>> lister(@RequestParam(required = false) UUID editionId) {
-        if (editionId != null) {
-            return ResponseEntity.ok(soireeEventRepository.findByEditionId(editionId));
-        }
-        return ResponseEntity.ok(soireeEventRepository.findAll());
+    public ResponseEntity<List<SoireeEventResponse>> lister(@RequestParam(required = false) UUID editionId) {
+        List<SoireeEvent> soirees = editionId != null
+                ? soireeEventRepository.findByEditionIdAvecDetails(editionId)
+                : soireeEventRepository.findAll();
+        return ResponseEntity.ok(soirees.stream().map(SoireeEventResponse::from).toList());
     }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','ORGANISATEUR')")
     @Transactional
-    public ResponseEntity<SoireeEvent> creer(@RequestBody SoireeEvent soiree, @RequestParam UUID phaseId) {
-        Phase phase = phaseRepository.findById(phaseId)
-                .orElseThrow(() -> new ResourceNotFoundException("Phase introuvable"));
-        soiree.setId(null);
-        soiree.setPhase(phase);
-        soiree.setEdition(phase.getEdition());
+    public ResponseEntity<SoireeEvent> creer(
+            @RequestBody SoireeEvent soiree,
+            @RequestParam(required = false) UUID phaseId,
+            @RequestParam(required = false) UUID editionId) {
+        if (phaseId != null) {
+            Phase phase = phaseRepository.findById(phaseId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Phase introuvable"));
+            soiree.setId(null);
+            soiree.setPhase(phase);
+            soiree.setEdition(phase.getEdition());
+            soiree.setTypeSoiree(TypeSoiree.NKS);
+        } else if (editionId != null) {
+            Edition edition = editionRepository.findById(editionId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Édition introuvable"));
+            soiree.setId(null);
+            soiree.setPhase(null);
+            soiree.setEdition(edition);
+            soiree.setTypeSoiree(TypeSoiree.LIBRE);
+        } else {
+            throw new ValidationMetierException("phaseId ou editionId requis pour créer une soirée");
+        }
         return ResponseEntity.status(201).body(soireeEventRepository.save(soiree));
     }
 
@@ -72,6 +93,7 @@ public class SoireeController {
         soiree.setVoteSurPlaceActif(modif.isVoteSurPlaceActif());
         soiree.setNbConsommationsPourVoteBonus(modif.getNbConsommationsPourVoteBonus());
         soiree.setPlafondVotesBonus(modif.getPlafondVotesBonus());
+        if (modif.getImageUrl() != null) soiree.setImageUrl(modif.getImageUrl());
         SoireeEvent sauvegardee = soireeEventRepository.save(soiree);
 
         // Clôture de soirée : les billets EMIS jamais scannés expirent (demande client). On ne

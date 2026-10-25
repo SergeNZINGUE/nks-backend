@@ -14,6 +14,7 @@ import java.util.UUID;
 
 public interface CandidatRepository extends JpaRepository<Candidat, UUID> {
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"utilisateur"})
     Page<Candidat> findByEditionIdAndStatutProfil(UUID editionId, StatutProfilCandidat statutProfil, Pageable pageable);
 
     Optional<Candidat> findByEditionIdAndCodeCandidat(UUID editionId, String codeCandidat);

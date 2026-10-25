@@ -1,6 +1,7 @@
 package bf.laterrasse.nks.domain;
 
 import bf.laterrasse.nks.domain.enums.Enums.StatutSoiree;
+import bf.laterrasse.nks.domain.enums.Enums.TypeSoiree;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
@@ -29,8 +30,13 @@ public class SoireeEvent {
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "phase_id", nullable = false)
+    @JoinColumn(name = "phase_id", nullable = true)
     private Phase phase;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type_soiree", nullable = false, length = 10)
+    @Builder.Default
+    private TypeSoiree typeSoiree = TypeSoiree.NKS;
 
     @Column(nullable = false, length = 150)
     private String nom;
@@ -79,4 +85,8 @@ public class SoireeEvent {
 
     @Column(name = "deliberation_verrouillee_le")
     private Instant deliberationVerrouilleeDate;
+
+    /** URL Cloudinary de l'image de couverture affichée dans le carousel homepage. */
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
 }

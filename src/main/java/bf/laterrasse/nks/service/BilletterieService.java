@@ -261,6 +261,7 @@ public class BilletterieService {
             UUID soireeId = reservation.getSoiree().getId();
             UUID categorieId = reservation.getCategorie() != null
                     ? reservation.getCategorie().getId() : trouverCategoriePourReservation(reservation).getId();
+
             CategorieTicket categorie = categorieTicketRepository
                     .findByIdForUpdate(categorieId)
                     .orElseThrow(() -> new ResourceNotFoundException("Catégorie de ticket introuvable pour la soirée"));

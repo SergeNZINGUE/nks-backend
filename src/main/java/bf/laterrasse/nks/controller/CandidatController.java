@@ -28,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** §13.5 — Galerie publique et profils candidats (US-12, US-15, US-16). */
@@ -181,6 +183,39 @@ public class CandidatController {
     public ResponseEntity<ChoixTitreResponse> choisirTitre(@Valid @RequestBody ChoisirTitreRequest request) {
         UUID utilisateurId = currentUserProvider.getCurrentUserId();
         return ResponseEntity.ok(choixTitreService.choisir(utilisateurId, request));
+    }
+
+    /**
+     * Transitions manuelles de statut profil réservées aux admins.
+     * Autorisées : ACTIF, SUSPENDU, FINALISTE, GAGNANT.
+     * EN_ATTENTE et ELIMINE ont leurs propres flux dédiés (candidature / classement).
+     */
+    @PutMapping("/{id}/statut")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @Transactional
+    public ResponseEntity<CandidatPublicResponse> changerStatut(@PathVariable UUID id,
+                                                                 @RequestBody Map<String, String> body) {
+        Candidat candidat = getCandidat(id);
+        String statutStr = body.get("statut");
+        if (statutStr == null || statutStr.isBlank()) {
+            throw new ValidationMetierException("Le champ 'statut' est requis");
+        }
+        StatutProfilCandidat nouveau;
+        try {
+            nouveau = StatutProfilCandidat.valueOf(statutStr.trim());
+        } catch (IllegalArgumentException e) {
+            throw new ValidationMetierException("Statut inconnu : " + statutStr);
+        }
+        Set<StatutProfilCandidat> autorises = Set.of(
+                StatutProfilCandidat.ACTIF,
+                StatutProfilCandidat.SUSPENDU,
+                StatutProfilCandidat.FINALISTE,
+                StatutProfilCandidat.GAGNANT);
+        if (!autorises.contains(nouveau)) {
+            throw new ValidationMetierException("Transition vers " + nouveau + " non autorisée par cet endpoint");
+        }
+        candidat.setStatutProfil(nouveau);
+        return ResponseEntity.ok(CandidatPublicResponse.from(candidatRepository.save(candidat)));
     }
 
     private Candidat getCandidat(UUID id) {

@@ -34,6 +34,11 @@ public final class Enums {
         PLANIFIEE, EN_COURS, TERMINEE, ANNULEE
     }
 
+    /** NKS = rattachée à une phase de compétition ; LIBRE = soirée hors compétition. */
+    public enum TypeSoiree {
+        NKS, LIBRE
+    }
+
     public enum StatutProfilCandidat {
         EN_ATTENTE, ACTIF, SUSPENDU, ELIMINE, FINALISTE, GAGNANT
     }
